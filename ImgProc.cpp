@@ -894,7 +894,7 @@ namespace img_proc{
 
 		//	In one octave, a blurred image is related to the previous image by a factor of 2^(1/scales), see SIFT 2004 page 7
 		float k = pow(2.0, (1.0 / (float)scales));
-		int s = scales + 2;
+		int s = scales + 3;
 
 		int destRows, destCols;
 
@@ -939,7 +939,7 @@ namespace img_proc{
 			//cv::Mat current = image;//CHANGED
 			//blur_img.push_back(image);//CHANGED
 			cv::Mat current = fgaussianFilter(image, pow(k, gauss_exp) * sigma);
-			printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
+			//printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
 			blur_img.push_back(current);
 			gauss_exp += 1;
 			//cv::Mat origin = image.clone();
@@ -947,12 +947,12 @@ namespace img_proc{
 			//std::string full_img = debug_Path + img_name + img_num + ftype;
 			//imwrite(full_img, current, compression_params);
 
-			for (int step = 0; step < s - 1; step++){
+			for (int step = 1; step < s; step++){
 				//cv::Mat next = fgaussianFilter(image, k);	//CHANGED	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
 				cv::Mat next = fgaussianFilter(image, pow(k, gauss_exp) * sigma);	//	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
 				cv::Mat dog = cv::Mat::zeros(curRows,curCols,CV_32FC1);
 				blur_img.push_back(next);
-				printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
+				//printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
 
 				float* curr_data = (float*)current.data;
 				float* next_data = (float*)next.data;
@@ -1007,6 +1007,10 @@ namespace img_proc{
 
 			//	Keypoint calculation.  Refer to SIFT papers for more information
 			for (int step = 1; step < s - 2; step++){
+				int temp_exp = gauss_exp - s + (step);
+				//printf("temp_exp: %d\n", temp_exp);
+				float temp_scale = ((pow(k, temp_exp) * sigma) - (pow(k, temp_exp - 1) * sigma)) / 2 + (pow(k, temp_exp - 1) * sigma);
+
 				cv::Mat& prev = dog_img[step - 1];
 				cv::Mat& curr = dog_img[step];
 				cv::Mat& next = dog_img[step + 1];
@@ -1077,6 +1081,7 @@ namespace img_proc{
 						//if (val < minval || val > maxval){
 						if ((lc == 0 || mc == 0) && (ec == 0)){
 							keypoint newKey(i, j, oct, 0, step);
+							newKey.scale = temp_scale;
 							keys.push_back(newKey);
 							key_count++;
 							//printf("min: %f, val: %f, max: %f\n", minval, val, maxval);
@@ -1190,6 +1195,9 @@ namespace img_proc{
 						if (val < 0){
 							val = (2 * M_PI) + val;
 						}
+						else if (val > 2 * M_PI){
+							val = val - (2 * M_PI);
+						}
 						//printf("Or: %f\n", val);
 						//if (val == 0 && val2 >= 0)
 						//	val = M_PI / 2;
@@ -1283,6 +1291,8 @@ namespace img_proc{
 		}
 		key_count = key_count_new;
 
+		mySiftDescriptors(keys, blur_oct, or_mag_oct);
+
 		int unfiltered = 0;
 		key_index = 0;
 		//	Optional print out of all keypoint data
@@ -1299,6 +1309,8 @@ namespace img_proc{
 			key_index++;
 		}
 		printf("Unfiltered: %d\n", unfiltered);
+
+
 
 		delete[] gKernel;
 		//printf("Got Here!\n");
@@ -1493,6 +1505,118 @@ namespace img_proc{
 			}
 
 			key_index++;
+		}
+	}
+
+
+	//void mySiftDescriptors
+	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct){
+		int region = 8;
+		int key_count = keys.size();
+
+		for (int key_index = 0; key_index < key_count; key_index++){
+
+			keypoint& key_now = keys[key_index];
+			cv::Mat& current = blur_oct[key_now.oct][key_now.index];
+			float* cur_or_mag = or_mag_oct[key_now.oct][key_now.index];
+			int curRows = current.rows, curCols = current.cols;
+
+			if (key_now.idx < region || key_now.idx >= current.rows - region || 
+				key_now.idy < region || key_now.idy >= current.cols - region ||
+				key_now.filtered == true){
+
+				key_now.filtered = true;
+				continue;
+			}
+
+			//printf("Fish 0 %d,%d\n", key_now.idx, key_now.idy);
+			//printf("Angle: %f\n", key_now.angle);
+
+			int or_mag_size = 2 * curRows * curCols;
+			int W = 2 * region + 1;
+			float* orientations = new float[W * W];
+			float* magnitudes = new float[W * W];
+			double* gKernel = new double[W * W];
+			createFilter(gKernel, 8.0, region);
+			cv::Mat gauss_cur = current(cv::Rect(key_now.idx - region, key_now.idy - region, W, W));
+
+			//printf("Fish 1 %d,%d\n", key_now.idx, key_now.idy);
+
+			for (int i = 0; i < W; i++){
+				for (int j = 0; j < W; j++){
+					int om_i = key_now.idx - region + i;
+					int om_j = key_now.idy - region + j;
+					orientations[i * W + j] = cur_or_mag[2 * (om_i * curCols + om_j)] + key_now.angle;
+					if (orientations[i * W + j] > 2 * M_PI){
+						orientations[i * W + j] -= 2 * M_PI;
+					}
+					else if (orientations[i * W + j] < 0){
+						orientations[i * W + j] += 2 * M_PI;
+					}
+					magnitudes[i * W + j] = cur_or_mag[2 * (om_i * curCols + om_j) + 1] * gKernel[i * W + j];
+				}
+			}
+
+			delete[] gKernel;
+			
+			//printf("Fish 2 %d,%d\n", key_now.idx, key_now.idy);
+			std::vector<float> descriptors;
+
+			for (int x = 0; x < W - 1; x += 4){
+				for (int y = 0; y < W - 1; y += 4){
+
+					std::vector<float> bins(8, 0);
+					for (int i = x; i < x + 4; i++){
+						for (int j = y; j < y + 4; j++){
+
+							//printf("3 %d,%d\n", i, j);
+							float sum = magnitudes[i * W + j] * gauss_cur.at<float>(i, j);
+							int bin = (orientations[i * W + j] * (180 / M_PI)) / 45.0;
+							//printf("Bin: %d\n", bin);
+							//getchar();
+							bins[bin] += sum;
+						}
+					}
+					//printf("Fish 4 %d,%d\n", key_now.idx, key_now.idy);
+					mySiftVectorThreshold(bins);
+					//printf("Fish 5\n");
+					descriptors.insert(descriptors.end(), bins.begin(), bins.end());
+					//printf("Fish 6\n");
+				}
+			}
+
+			key_now.descriptors = descriptors;
+			delete[] orientations;
+			delete[] magnitudes;
+			//printf("Fish 7\n");
+		}
+	}
+
+	std::vector<float> mySiftVectorThreshold(std::vector<float>& vec){
+		mySiftNormVec(vec);
+		std::vector<float> res;
+		bool threshold = false;
+		for (float& elem : vec){
+			if (elem <= 0.2)
+				res.push_back(elem);
+			else{
+				res.push_back(0);
+				threshold = true;
+			}
+		}
+		if (threshold)
+			mySiftNormVec(res);
+		return res;
+	}
+
+	void mySiftNormVec(std::vector<float>& vec){
+		float length = 0;
+		for (int i = 0; i < vec.size(); i++){
+			length += vec[i];
+		}
+		if (length == 0) return;
+		for (int i = 0; i < vec.size(); i++){
+			vec[i] = vec[i] / length;
 		}
 	}
 

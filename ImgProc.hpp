@@ -16,6 +16,7 @@ namespace img_proc{
 		int idx, idy, oct, index;
 		float angle, scale, mag;
 		bool filtered = false;
+		std::vector<float> descriptors;
 		keypoint(int _idx, int _idy, int _oct, float _angle, int _index){	//Constuctor
 			idx = _idx;
 			idy = _idy;
@@ -43,6 +44,9 @@ namespace img_proc{
 	cv::Mat fGaussTest(cv::Mat image);
 	cv::Mat mySift(cv::Mat image);
 	void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys);
+	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct);
+	std::vector<float> mySiftVectorThreshold(std::vector<float>& vec);
+	void mySiftNormVec(std::vector<float>& vec);
 	cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py);
 
