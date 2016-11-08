@@ -1,6 +1,7 @@
 #include "ImgProc.hpp"
 #include <stdio.h>
 #include <iostream>
+#include <fstream>
 
 namespace img_proc{
 
@@ -1289,12 +1290,14 @@ namespace img_proc{
 
 			key_index++;
 		}
-		key_count = key_count_new;
+		
+
+		delete[] gKernel;
 
 		mySiftDescriptors(keys, blur_oct, or_mag_oct);
 
 		int unfiltered = 0;
-		key_index = 0;
+		/*key_index = 0;
 		//	Optional print out of all keypoint data
 		while (key_index < key_count){
 			keypoint& key_now = keys[key_index];
@@ -1307,12 +1310,27 @@ namespace img_proc{
 			}
 			unfiltered += 1;
 			key_index++;
+		}*/
+
+		std::vector<keypoint>::iterator iter;
+		for (iter = keys.begin(); iter != keys.end(); ){
+			if ((*iter).filtered){
+				iter = keys.erase(iter);
+			}
+			else{
+				unfiltered++;
+				iter++;
+			}
 		}
+
+		key_count = keys.size();
+
 		printf("Unfiltered: %d\n", unfiltered);
+		//printf("Distance: %d\n", std::distance(keys.begin(),keys.end()));
 
-
-
-		delete[] gKernel;
+		mySiftWriteKeyFile(keys);
+		kd_node fish = mySiftKDHelp(keys);
+		
 		//printf("Got Here!\n");
 
 		//	DoG keypoint indicator drawing
@@ -1600,7 +1618,7 @@ namespace img_proc{
 			if (elem <= 0.2)
 				res.push_back(elem);
 			else{
-				res.push_back(0);
+				res.push_back(0.2);
 				threshold = true;
 			}
 		}
@@ -1712,5 +1730,105 @@ namespace img_proc{
 		return result;
 	}
 
+	bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
+		std::ofstream key_file;
+		key_file.open("D://School//Summer 2016//Research//mySift//keys.txt");
+
+		for (keypoint& key : keys){
+			if (!key.filtered){
+				key_file << std::to_string(key.idx) << ":" << std::to_string(key.idy) << ":" << std::to_string(key.oct) << ":" << std::to_string(key.index) << ":";
+				key_file << std::to_string(key.angle) << ":" << std::to_string(key.scale);
+
+				for (float val : key.descriptors){
+					key_file << ":" << std::to_string(val);
+				}
+				key_file << std::endl;
+			}
+		}
+
+		key_file.close();
+		return true;
+	}
+
+	kd_node mySiftKDHelp(std::vector<keypoint>& keys){
+		std::string dims = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+		kd_node curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims);
+		return curr;
+	}
+
+	kd_node mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims){
+		kd_node curr;
+		if (std::distance(front, back) <= 1 || dims.find('0') == std::string::npos){
+			curr.leaf = true;
+			curr.leaf_begin = front;
+			curr.leaf_end = back;
+			return curr;
+		}
+
+		float* range_min = new float[128];
+		float* range_max = new float[128];
+
+		for (int i = 0; i < 128; i++){
+			range_min[i] = FLT_MAX;
+			range_max[i] = FLT_MIN;
+		}
+
+		for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+			for (int i = 0; i < 128; i++){
+				if (dims[i] == '1')
+					continue;
+				range_min[i] = std::min(range_min[i], (*iter).descriptors[i]);
+				range_max[i] = std::max(range_max[i], (*iter).descriptors[i]);
+			}
+		}
+
+		int dim = 0;
+		float max_diff = 0.0;
+
+		for (int i = 0; i < 128; i++){
+			if (dims[i] == '1')
+				continue;
+			float diff = range_max[i] - range_min[i];
+			if (diff >= max_diff){
+				dim = i;
+				max_diff = diff;
+			}
+		}
+
+		dims[dim] = '1';
+		curr.dim = dim;
+		delete[] range_min;
+		delete[] range_max;
+
+		mySiftKDQuicksort(keys, front, back, dim);
+		int middle = std::distance(front, back) / 2;
+		curr.median = (*(front + middle)).descriptors[dim];
+
+		curr.left = &(mySiftKDTree(keys, front, front + middle, dims));
+		curr.right = &(mySiftKDTree(keys, front + middle, back, dims));
+
+		return curr;
+	}
+
+	void mySiftKDQuicksort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim){
+		if (std::distance(front,back) <= 1){
+			return;
+		}
+		std::vector<keypoint>::iterator pivot = back - 1;
+		std::vector<keypoint>::iterator wall = front;
+		std::vector<keypoint>::iterator current = front;
+		while (current != pivot){
+			if ((*current).descriptors[dim] < (*pivot).descriptors[dim]){
+				std::iter_swap(current, wall);
+				wall++;
+			}
+			current++;
+		}
+		std::iter_swap(pivot, wall);
+
+		mySiftKDQuicksort(keys, front, wall, dim);
+		mySiftKDQuicksort(keys, wall + 1, back, dim);
+	}
 
 }

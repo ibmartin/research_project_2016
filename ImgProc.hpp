@@ -26,6 +26,19 @@ namespace img_proc{
 		}
 	};
 
+	class kd_node
+	{
+	public:
+		bool leaf = 0;
+		int dim = 0;
+		float median = 0;
+		
+		kd_node* left;
+		kd_node* right;
+		std::vector<keypoint>::iterator leaf_begin;
+		std::vector<keypoint>::iterator leaf_end;
+	};
+
 	cv::Mat rgb2Gray(cv::Mat image);
 	cv::Mat frgb2Gray(cv::Mat image);
 	cv::Mat reverse(cv::Mat image);
@@ -49,7 +62,10 @@ namespace img_proc{
 	void mySiftNormVec(std::vector<float>& vec);
 	cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py);
-
+	bool mySiftWriteKeyFile(std::vector<keypoint>& keys);
+	kd_node mySiftKDHelp(std::vector<keypoint>& keys);
+	kd_node mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims);
+	void mySiftKDQuicksort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim);
 }
 
 #endif
