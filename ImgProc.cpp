@@ -1936,10 +1936,10 @@ namespace img_proc{
 	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search){
 		if (current->leaf == true){
 			max_search -= 1;
-			printf("Trouble!\n");
+			//printf("Trouble!\n");
 			return current;
 		}
-		printf("Test: %d\n", std::distance(current->leaf_begin,current->leaf_end));
+		//printf("Test: %d\n", std::distance(current->leaf_begin,current->leaf_end));
 
 		int dim = current->dim;
 		int median = current->median;
@@ -1947,15 +1947,15 @@ namespace img_proc{
 		kd_node kd_final;
 
 		if (search_key.descriptors[dim] < median){
-			printf("Step Down Left!\n");
+			//printf("Step Down Left!\n");
 			kd_node* back_out = mySiftKDSearchHelp(current->left, keys, search_key, max_search);
-			printf("Step Up Left!\n");
+			//printf("Step Up Left!\n");
 			return back_out;
 		}
 		else{
-			printf("Step Down Right!\n");
+			//printf("Step Down Right!\n");
 			kd_node* back_out = mySiftKDSearchHelp(current->right, keys, search_key, max_search);
-			printf("Step Up Right!\n");
+			//printf("Step Up Right!\n");
 			return back_out;
 		}
 	}
