@@ -29,7 +29,7 @@ namespace img_proc{
 	class kd_node
 	{
 	public:
-		bool leaf = 0;
+		bool leaf = false;
 		int dim = 0;
 		float median = 0;
 		
@@ -63,9 +63,12 @@ namespace img_proc{
 	cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	bool mySiftWriteKeyFile(std::vector<keypoint>& keys);
+	bool mySiftReadKeyFile(std::vector<keypoint>& keys, std::string file_name);
 	kd_node mySiftKDHelp(std::vector<keypoint>& keys);
-	kd_node mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims);
+	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, int& count);
 	void mySiftKDQuicksort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim);
+	kd_node* mySiftKDSearch(kd_node root, std::vector<keypoint>& keys, keypoint& search_key);
+	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search);
 }
 
 #endif

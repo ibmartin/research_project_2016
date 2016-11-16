@@ -1290,11 +1290,11 @@ namespace img_proc{
 
 			key_index++;
 		}
-		
 
 		delete[] gKernel;
 
 		mySiftDescriptors(keys, blur_oct, or_mag_oct);
+		
 
 		int unfiltered = 0;
 		/*key_index = 0;
@@ -1330,8 +1330,15 @@ namespace img_proc{
 
 		mySiftWriteKeyFile(keys);
 		kd_node fish = mySiftKDHelp(keys);
+
+
+		printf("\n");
+		std::vector<keypoint> temp_keys;
+
+		mySiftReadKeyFile(temp_keys, "blue");
+
+		kd_node* kd_final = mySiftKDSearch(fish,keys,temp_keys[0]);
 		
-		//printf("Got Here!\n");
 
 		//	DoG keypoint indicator drawing
 		if (full_dog == 1){
@@ -1556,7 +1563,7 @@ namespace img_proc{
 			float* magnitudes = new float[W * W];
 			double* gKernel = new double[W * W];
 			createFilter(gKernel, 8.0, region);
-			cv::Mat gauss_cur = current(cv::Rect(key_now.idx - region, key_now.idy - region, W, W));
+			cv::Mat gauss_cur = current(cv::Rect(key_now.idy - region, key_now.idx - region, W, W));
 
 			//printf("Fish 1 %d,%d\n", key_now.idx, key_now.idy);
 
@@ -1742,8 +1749,61 @@ namespace img_proc{
 				for (float val : key.descriptors){
 					key_file << ":" << std::to_string(val);
 				}
-				key_file << std::endl;
+				key_file << ":" << std::endl;
 			}
+		}
+
+		key_file.close();
+		return true;
+	}
+
+	bool mySiftReadKeyFile(std::vector<keypoint>& keys, std::string file_name){
+		std::string line;
+		std::ifstream key_file("D://School//Summer 2016//Research//mySift//keys_in.txt");
+		if (!key_file.is_open()){
+			printf("Can't find file!\n");
+			return false;
+		}
+
+		std::string delimiter = ":";
+
+		while (std::getline(key_file, line)){
+			
+			//keypoint read_key;
+			size_t pos = line.find(delimiter);
+			int idx = stoi(line.substr(0,pos));
+			line.erase(0, pos + 1);
+
+			pos = line.find(delimiter);
+			int idy = stoi(line.substr(0, pos));
+			line.erase(0, pos + 1);
+
+			pos = line.find(delimiter);
+			int oct = stoi(line.substr(0, pos));
+			line.erase(0, pos + 1);
+
+			pos = line.find(delimiter);
+			int index = stoi(line.substr(0, pos));
+			line.erase(0, pos + 1);
+
+			pos = line.find(delimiter);
+			float angle = stof(line.substr(0, pos));
+			line.erase(0, pos + 1);
+
+			pos = line.find(delimiter);
+			float scale = stof(line.substr(0, pos));
+			line.erase(0, pos + 1);
+
+			keypoint read_key(idx, idy, oct, angle, index);
+			read_key.scale = scale;
+
+			float desc = 0;
+			while ((pos = line.find(delimiter)) != std::string::npos){
+				desc = stof(line.substr(0, pos));
+				read_key.descriptors.push_back(desc);
+				line.erase(0, pos + 1);
+			}
+			keys.push_back(read_key);
 		}
 
 		key_file.close();
@@ -1753,34 +1813,62 @@ namespace img_proc{
 	kd_node mySiftKDHelp(std::vector<keypoint>& keys){
 		std::string dims = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
-		kd_node curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims);
-		return curr;
+		int count = 0;
+
+		kd_node* curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims, count);
+		//printf("Count: %d\n", count);
+
+		return *(curr);
 	}
 
-	kd_node mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims){
-		kd_node curr;
+	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, int& count){
+		kd_node* curr = new kd_node;
+		curr->leaf_begin = front;
+		curr->leaf_end = back;
+
 		if (std::distance(front, back) <= 1 || dims.find('0') == std::string::npos){
-			curr.leaf = true;
-			curr.leaf_begin = front;
-			curr.leaf_end = back;
+			curr->leaf = true;
+			count += 1;
 			return curr;
 		}
 
-		float* range_min = new float[128];
-		float* range_max = new float[128];
+		int dist = std::distance(front, back);
+
+		float* data_mean = new float[128];
+		float* data_var = new float[128];
 
 		for (int i = 0; i < 128; i++){
-			range_min[i] = FLT_MAX;
-			range_max[i] = FLT_MIN;
+			data_mean[i] = 0;
+			data_var[i] = 0;
 		}
 
 		for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
 			for (int i = 0; i < 128; i++){
 				if (dims[i] == '1')
 					continue;
-				range_min[i] = std::min(range_min[i], (*iter).descriptors[i]);
-				range_max[i] = std::max(range_max[i], (*iter).descriptors[i]);
+				data_mean[i] += (*iter).descriptors[i];
+				//data_var[i] = std::max(data_var[i], (*iter).descriptors[i]);
 			}
+		}
+
+		for (int i = 0; i < 128; i++){
+			if (dims[i] == '1')
+				continue;
+			data_mean[i] /= dist;
+		}
+
+		for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+			for (int i = 0; i < 128; i++){
+				if (dims[i] == '1')
+					continue;
+				data_var[i] += ((*iter).descriptors[i] - data_mean[i]) * ((*iter).descriptors[i] - data_mean[i]);
+			}
+		}
+
+		for (int i = 0; i < 128; i++){
+			if (dims[i] == '1')
+				continue;
+			data_var[i] /= dist;
 		}
 
 		int dim = 0;
@@ -1789,24 +1877,30 @@ namespace img_proc{
 		for (int i = 0; i < 128; i++){
 			if (dims[i] == '1')
 				continue;
-			float diff = range_max[i] - range_min[i];
-			if (diff >= max_diff){
+			if (data_var[i] >= max_diff){
 				dim = i;
-				max_diff = diff;
+				max_diff = data_var[i];
 			}
 		}
 
 		dims[dim] = '1';
-		curr.dim = dim;
-		delete[] range_min;
-		delete[] range_max;
+		curr->dim = dim;
+		delete[] data_mean;
+		delete[] data_var;
 
 		mySiftKDQuicksort(keys, front, back, dim);
 		int middle = std::distance(front, back) / 2;
-		curr.median = (*(front + middle)).descriptors[dim];
+		curr->median = (*(front + middle)).descriptors[dim];
 
-		curr.left = &(mySiftKDTree(keys, front, front + middle, dims));
-		curr.right = &(mySiftKDTree(keys, front + middle, back, dims));
+		//printf("Left: %d, Right: %d\n", std::distance(front, front + middle), std::distance(front + middle, back));
+		//getchar();
+
+		curr->left = mySiftKDTree(keys, front, front + middle, dims, count);
+		curr->right = mySiftKDTree(keys, front + middle, back, dims, count);
+
+		//if (curr.left->leaf == false){
+		//	printf("Test: %d\n", curr.left->dim);
+		//}
 
 		return curr;
 	}
@@ -1829,6 +1923,41 @@ namespace img_proc{
 
 		mySiftKDQuicksort(keys, front, wall, dim);
 		mySiftKDQuicksort(keys, wall + 1, back, dim);
+	}
+
+	kd_node* mySiftKDSearch(kd_node root, std::vector<keypoint>& keys, keypoint& search_key){
+		int max_search = 5;
+
+		kd_node* kd_out = mySiftKDSearchHelp(&root, keys, search_key, max_search);
+		printf("Came Back!\n");
+		return kd_out;
+	}
+
+	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search){
+		if (current->leaf == true){
+			max_search -= 1;
+			printf("Trouble!\n");
+			return current;
+		}
+		printf("Test: %d\n", std::distance(current->leaf_begin,current->leaf_end));
+
+		int dim = current->dim;
+		int median = current->median;
+
+		kd_node kd_final;
+
+		if (search_key.descriptors[dim] < median){
+			printf("Step Down Left!\n");
+			kd_node* back_out = mySiftKDSearchHelp(current->left, keys, search_key, max_search);
+			printf("Step Up Left!\n");
+			return back_out;
+		}
+		else{
+			printf("Step Down Right!\n");
+			kd_node* back_out = mySiftKDSearchHelp(current->right, keys, search_key, max_search);
+			printf("Step Up Right!\n");
+			return back_out;
+		}
 	}
 
 }
