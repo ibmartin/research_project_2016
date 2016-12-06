@@ -1821,6 +1821,7 @@ namespace img_proc{
 		int count = 0;
 
 		kd_node* curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims, count);
+		curr->parent = 0;
 		//printf("Count: %d\n", count);
 
 		return *(curr);
@@ -1901,7 +1902,9 @@ namespace img_proc{
 		//getchar();
 
 		curr->left = mySiftKDTree(keys, front, front + middle, dims, count);
+		curr->left->parent = curr;
 		curr->right = mySiftKDTree(keys, front + middle, back, dims, count);
+		curr->right->parent = curr;
 
 		//if (curr.left->leaf == false){
 		//	printf("Test: %d\n", curr.left->dim);
@@ -1938,6 +1941,25 @@ namespace img_proc{
 		}
 
 		return sq_dist;
+	}
+
+	float mySiftTheoryDist(kd_node* start, keypoint& search_key){
+		keypoint new_key(search_key.idx, search_key.idy, search_key.oct, search_key.angle, search_key.index);
+		for (int i = 0; i < 128; i++){
+			new_key.descriptors.push_back(search_key.descriptors[i]);
+		}
+
+		while (start->parent != 0){
+			if (search_key.descriptors[start->dim] >= start->median && start->parent->left == start){
+				new_key.descriptors[start->dim] = start->median;
+			}
+			else if (search_key.descriptors[start->dim] < start->median && start->parent->right == start){
+				new_key.descriptors[start->dim] = start->median;
+			}
+			start = start->parent;
+		}
+
+		return mySiftDescDist(search_key, new_key);
 	}
 
 	kd_node* mySiftKDIterSearch(kd_node* root, std::vector<keypoint>& keys, keypoint& search_key){
@@ -1998,6 +2020,10 @@ namespace img_proc{
 				}
 				if (--max_search == 0)
 					break;
+				continue;
+			}
+
+			if (mySiftTheoryDist(current,search_key) > closest_dist){
 				continue;
 			}
 

@@ -33,6 +33,7 @@ namespace img_proc{
 		int dim = 0;
 		float median = 0;
 		
+		kd_node* parent;
 		kd_node* left;
 		kd_node* right;
 		std::vector<keypoint>::iterator leaf_begin;
@@ -68,6 +69,7 @@ namespace img_proc{
 	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, int& count);
 	void mySiftKDQuicksort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim);
 	float mySiftDescDist(keypoint& key_1, keypoint& key_2);
+	float mySiftTheoryDist(kd_node* start, keypoint& search_key);
 	kd_node* mySiftKDIterSearch(kd_node* root, std::vector<keypoint>& keys, keypoint& search_key);
 	kd_node* mySiftKDSearch(kd_node root, std::vector<keypoint>& keys, keypoint& search_key);
 	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search);

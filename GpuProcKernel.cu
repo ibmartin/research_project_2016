@@ -23,6 +23,13 @@ __global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data
 	}
 }
 
+__global__ void frgb2GrayKernel(float* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	//src_data += 3 * offset;
+	dest_data[idx] = 0.299 * src_data[3 * idx + 2] + 0.587 * src_data[3 * idx + 1] + 0.114 * src_data[3 * idx];
+}
+
 __global__ void reverseKernel(unsigned char* dest_data, unsigned char* src_data, int srcN, int chunkRows, int offset){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -52,6 +59,16 @@ __global__ void directResizeKernel(unsigned char* dest_data, unsigned char* src_
 		int sCol = (((idx + offset) / 3) % destCols) * rCol;
 		dest_data[idx] = src_data[3 * (sRow * srcCols + sCol) + (idx + offset) % 3];
 	}
+}
+
+__global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	double rRow = (double)srcRows / destRows;
+	double rCol = (double)srcCols / destCols;
+
+	int sRow = ((idx + offset) / destCols) * rRow;
+	int sCol = ((idx + offset) % destCols) * rCol;
+	dest_data[idx] = src_data[(sRow * srcCols + sCol) + (idx + offset)];
 }
 
 __global__ void linearResizeKernel(unsigned char* dest_data, unsigned char* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
@@ -102,7 +119,34 @@ __global__ void gaussianFilterKernel(unsigned char* dest_data, unsigned char* sr
 	int mink = min(filter_size, i);
 	int maxl = min(filter_size, cols - j);
 	int minl = min(filter_size, j);
-	unsigned char tmp = 0;
+	float tmp = 0;
+	for (int k = -mink; k <= maxk; k++){
+		for (int l = -minl; l <= maxl; l++){
+			tmp += *(gKernel + (k + filter_size) * (2 * filter_size + 1) + (l + filter_size)) * src_data[(idx + offset) + 3 * (k * cols + l)];
+		}
+	}
+	dest_data[idx] = (unsigned char)tmp;
+	//}
+	/*else{
+	dest_data[idx] = src_data[idx];
+	}*/
+}
+
+__global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double* gKernel, int filter_size, int rows, int cols, int chunkRows, int offset){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	/*if ((idx / 3) / cols > filter_size &&
+	(idx / 3) / cols < rows - filter_size &&
+	(idx / 3) % cols > filter_size &&
+	(idx / 3) % cols < cols - filter_size ){*/
+
+	int i = ((idx + offset) / 3) / cols;
+	int j = ((idx + offset) / 3) % cols;
+
+	int maxk = min(filter_size, rows - i);
+	int mink = min(filter_size, i);
+	int maxl = min(filter_size, cols - j);
+	int minl = min(filter_size, j);
+	float tmp = 0;
 	for (int k = -mink; k <= maxk; k++){
 		for (int l = -minl; l <= maxl; l++){
 			tmp += *(gKernel + (k + filter_size) * (2 * filter_size + 1) + (l + filter_size)) * src_data[(idx + offset) + 3 * (k * cols + l)];

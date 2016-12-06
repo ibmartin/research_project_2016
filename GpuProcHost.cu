@@ -11,6 +11,7 @@
 #define M_PI				3.14159265358979323846  /* pi */
 #define IMG_CHUNK			3110400	/* (1920 x 1080 x 3) / 2 */
 #define THREADS_PER_BLOCK	256
+#define MEM_CAP				32768 //32 KB as a power of 2
 
 void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
 	unsigned char* deviceSrcData;
@@ -46,6 +47,50 @@ void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int 
 	}
 
 	cudaFree(deviceSrcData);
+}
+
+void cudafRgb2Gray(unsigned char* input, float* output, int srcRows, int srcCols){
+	unsigned char* deviceSrcData;
+	float* deviceDestData;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int blocks = 0;
+	int chunkRows = 0;
+	int offset = 0;
+	//int srcN = 3 * srcRows * srcCols;
+	int datasize1 = 3 * sizeof(unsigned char);
+	int datasize2 = sizeof(float);
+
+	int chunk_size = MEM_CAP / (datasize1 + datasize2);
+	int rounds = ceil((srcRows * srcCols) / (float)chunk_size);
+	//cudaMalloc(&deviceSrcData, srcN*sizeof(float));
+	//cudaMemcpy(deviceSrcData, input, srcN*sizeof(float), cudaMemcpyHostToDevice);
+
+	chunkRows = IMG_CHUNK / srcCols;
+	if (chunkRows == 0){
+		chunkRows = srcRows;
+	}
+	//int rounds = ceil(srcRows / (double)chunkRows);
+	//int rounds = steps;
+
+	for (int step = 0; step < rounds; step++){
+		int remainder = fmin(chunk_size, (srcRows * srcCols) - (step * chunk_size) );
+		int srcN = remainder * datasize1;
+		int destN = remainder * datasize2;
+		if (destN <= 0)
+			break;
+
+		blocks = ((destN / datasize2) + threadsPerBlock - 1) / threadsPerBlock;
+
+		cudaMalloc(&deviceSrcData, srcN);
+		cudaMemcpy(deviceSrcData, input + (step * chunk_size * 3), srcN, cudaMemcpyHostToDevice);
+
+		cudaMalloc(&deviceDestData, destN);
+		frgb2GrayKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, chunkRows, 0);
+		cudaMemcpy(output + offset, deviceDestData, destN, cudaMemcpyDeviceToHost);
+		cudaFree(deviceDestData);
+
+		offset += remainder;
+	}
 }
 
 void cudaReverse(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
@@ -164,6 +209,58 @@ void cudaDirectResize(unsigned char* input, unsigned char* output, int srcRows, 
 	cudaFree(deviceSrcData);
 }
 
+void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, int destRows, int destCols){
+	float* deviceSrcData;
+	float* deviceDestData;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int blocks = 0;
+	int chunkRows = 0;
+	int offset = 0;
+
+	float ratio = (float)(destRows * destCols) / (float)(srcRows * srcCols);
+	float rat1 = 1.0, ratc1 = 1.0;
+	float rat2 = 1.0, ratc2 = 1.0;
+
+	if (ratio < 1.0){
+		rat1 = floor(rat1 / ratio);
+		ratc1 = ceil(ratc1 / ratio);
+	}
+	else if (ratio >= 1.0){
+		rat2 = floor(rat2 / ratio);
+		ratc2 = ceil(ratc2 / ratio);
+	}
+
+	int datasize1 = sizeof(float);
+	int datasize2 = sizeof(float);
+
+	int chunk_size = MEM_CAP / (ceil((float)datasize1 * ratio) + datasize2);
+	int rounds = ceil((destRows * destCols) / (float)chunk_size);
+
+	for (int step = 0; step < rounds; step++){
+		int remainder = fmin(chunk_size, (destRows * destCols) - (step * chunk_size));
+		printf("Step: %d, Remainder: %d\n", step, (destRows * destCols) - (step * chunk_size));
+		int srcN = ceil((float)remainder * ratio) * datasize1;
+		int destN = remainder * datasize2;
+		if (destN <= 0)
+			break;
+
+		blocks = ((destN / datasize2) + threadsPerBlock - 1) / threadsPerBlock;
+
+		cudaMalloc(&deviceSrcData, srcN);
+		cudaMemcpy(deviceSrcData, input + (int)(step * ceil(chunk_size / ratio)), srcN, cudaMemcpyHostToDevice);
+
+		cudaMalloc(&deviceDestData, destN);
+		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, chunk_size, 0.0);
+		cudaMemcpy(output + offset, deviceDestData, destN, cudaMemcpyDeviceToHost);
+
+		cudaFree(deviceSrcData);
+		cudaFree(deviceDestData);
+		offset += remainder;
+	}
+
+
+}
+
 void cudaLinearResize(unsigned char* input, unsigned char* output, int srcRows, int srcCols, int destRows, int destCols){
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
@@ -202,7 +299,7 @@ void cudaLinearResize(unsigned char* input, unsigned char* output, int srcRows, 
 	cudaFree(deviceSrcData);
 }
 
-void cudaGaussianFilter(unsigned char* input, unsigned char* output, double gKernel[][2 * FILTER_SIZE + 1], int srcRows, int srcCols){
+void cudaGaussianFilter(unsigned char* input, unsigned char* output, double* gKernel, int srcRows, int srcCols){
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
 	double* deviceFilter;
@@ -242,6 +339,55 @@ void cudaGaussianFilter(unsigned char* input, unsigned char* output, double gKer
 
 	cudaFree(deviceSrcData);
 	cudaFree(deviceFilter);
+}
+
+void fCudaGaussianFilter(float* input, float* output, double* gKernel, int srcRows, int srcCols){
+	float* deviceSrcData;
+	float* deviceDestData;
+	double* deviceFilter;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int blocks = 0;
+	int chunkRows = 0;
+	int srcN = 3 * srcRows * srcCols;
+
+	cudaMalloc(&deviceSrcData, srcN*sizeof(float));
+	cudaMalloc(&deviceFilter, (2 * FILTER_SIZE + 1) * (2 * FILTER_SIZE + 1) * sizeof(double));
+	cudaMemcpy(deviceSrcData, input, srcN*sizeof(float), cudaMemcpyHostToDevice);
+	cudaMemcpy(deviceFilter, gKernel, (2 * FILTER_SIZE + 1)*(2 * FILTER_SIZE + 1)*sizeof(double), cudaMemcpyHostToDevice);
+
+	chunkRows = IMG_CHUNK / srcCols;
+	if (chunkRows == 0){
+		chunkRows = srcRows;
+	}
+	int rounds = ceil(srcRows / (double)chunkRows);
+
+	int offset = 0;
+	for (int step = 0; step < rounds; step++){
+		printf("Step\n");
+		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
+		if (destN <= 0){
+			break;
+		}
+
+		blocks = (destN + threadsPerBlock - 1) / threadsPerBlock;
+
+		cudaMalloc(&deviceDestData, destN*sizeof(float));
+		//cudaMalloc(&deviceSrcData, destN*sizeof(float));
+
+		//cudaMemcpy(deviceSrcData, input + offset, destN*sizeof(float), cudaMemcpyHostToDevice);
+
+		//fGaussianFilterKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, deviceFilter, FILTER_SIZE, srcRows, srcCols, chunkRows, offset);
+
+		//cudaMemcpy(output + offset, deviceDestData, destN*sizeof(float), cudaMemcpyDeviceToHost);
+		cudaFree(deviceDestData);
+		//cudaFree(deviceSrcData);
+
+		offset += destN;
+	}
+
+	cudaFree(deviceFilter);
+	cudaFree(deviceSrcData);
+
 }
 
 void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
@@ -666,5 +812,7 @@ void cudaKMeansOld(unsigned char* input, unsigned char* output, int srcRows, int
 	delete[] k_count;
 
 }
+
+
 
 #endif

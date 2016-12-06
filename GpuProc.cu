@@ -23,6 +23,16 @@ Mat rgb2Gray(Mat image){
 	return out;
 }
 
+Mat frgb2Gray(Mat image){
+	Mat out = Mat(image.rows, image.cols, CV_32FC1);
+
+	unsigned char* input = (unsigned char*)image.datastart;
+	float* output = (float*)out.datastart;
+	cudafRgb2Gray(input, output, image.rows, image.cols);
+
+	return out;
+}
+
 Mat reverse(Mat image){
 	Mat out = Mat(image.rows, image.cols, image.type());
 
@@ -53,6 +63,15 @@ Mat directResize(Mat image, int rows, int cols){
 	return out;
 }
 
+Mat fdirectResize(Mat image, int rows, int cols){
+	Mat out = Mat::zeros(rows, cols, CV_32FC1);
+	float* input = (float*)image.datastart;
+	float* output = (float*)out.datastart;
+	cudafDirectResize(input, output, image.rows, image.cols, rows, cols);
+
+	return out;
+}
+
 Mat linearResize(Mat image, int rows, int cols){
 	Mat out = Mat(rows, cols, image.type());
 
@@ -63,7 +82,7 @@ Mat linearResize(Mat image, int rows, int cols){
 	return out;
 }
 
-void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma){
+/*void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma){
 	//standard deviation to 1.0
 	double sigma = inputSigma;
 	double r, s = 2.0 * sigma * sigma;
@@ -82,11 +101,41 @@ void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma){
 			gKernel[i][j] /= sum;
 		}
 	}
+}*/
+
+void createFilter(double* gKernel, double inputSigma, int filter_size){
+	//standard deviation to 1.0
+	double sigma = inputSigma;
+	double r, s = 2.0 * sigma * sigma;
+	int W = 2 * filter_size + 1;
+	double mean = W / 2.0;
+	double sum = 0.0;
+
+	for (int x = -filter_size; x <= filter_size; x++){
+		for (int y = -filter_size; y <= filter_size; y++){
+
+			//Look up math for Gaussian Filtering
+			r = sqrt(x * x + y * y);
+			double val = (exp(-(r*r) / s)) / (M_PI * s);
+
+			//double val = exp(-0.5 * (pow((x - mean) / sigma, 2.0) + pow((y - mean) / sigma, 2.0))) / (2 * M_PI * sigma * sigma);
+
+			gKernel[((x + filter_size) * W) + (y + filter_size)] = val;
+			sum += val;
+		}
+	}
+
+	for (int i = 0; i < W; ++i){
+		for (int j = 0; j < W; ++j){
+			gKernel[(i * W) + j] /= sum;
+		}
+	}
 }
 
 Mat gaussianFilter(Mat image, double sigma){
-	double gKernel[2 * FILTER_SIZE + 1][2 * FILTER_SIZE + 1];
-	createFilter(gKernel, sigma);
+	int W = 2 * FILTER_SIZE + 1;
+	double* gKernel = new double[W * W];
+	createFilter(gKernel, sigma, FILTER_SIZE);
 
 	Mat out = Mat(image.rows, image.cols, image.type());
 	uchar* input = (uchar*)image.datastart;
@@ -97,6 +146,20 @@ Mat gaussianFilter(Mat image, double sigma){
 
 	return out;
 	//return image;
+}
+
+Mat fGaussianFilter(Mat image, double sigma){
+	int W = 2 * FILTER_SIZE + 1;
+	double* gKernel = new double[W * W];
+	createFilter(gKernel, sigma, FILTER_SIZE);
+
+	Mat out = Mat::zeros(image.rows, image.cols, CV_32FC1);
+	float* input = (float*)image.datastart;
+	float* output = (float*)out.datastart;
+	fCudaGaussianFilter(input, output, gKernel, image.rows, image.cols);
+
+	return out;
+
 }
 
 Mat sobelFilter(Mat image){
@@ -170,6 +233,30 @@ Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
 	}
 
 	return output;
+}
+
+Mat mySift(Mat original){
+	Mat out;
+
+	std::vector<int> compression_params;
+	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+	compression_params.push_back(9);
+	std::string debug_Path = "D://School//Summer 2016//Research//mySift//";
+	std::string img_name = "audrey";
+	std::string ftype = ".png";
+
+	int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
+	int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
+	int mark_dim = 2;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
+
+	//	The first step is to scale up the input image by a factor of 2 in both dimensions, then apply a gaussian blur with sigma = 1.6
+	//	Scaling up the input provides more keypoints and approximates a blur with sigma = 1.0, assuming the original image is roughly sigma = 0.5 which is the threshold for noise
+	//	Sigma = 1.6 was experimentally determined by Lowe to give the best results.  Refer to the 2004 SIFT paper, pages 9 and 10 for discussion
+	float sigma = 1.6;
+
+
+
+	return out;
 }
 
 #endif
