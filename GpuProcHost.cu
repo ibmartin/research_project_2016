@@ -12,6 +12,7 @@
 #define IMG_CHUNK			3110400	/* (1920 x 1080 x 3) / 2 */
 #define THREADS_PER_BLOCK	256
 #define MEM_CAP				32768 //32 KB as a power of 2
+//#define MEM_CAP				16384 //32 KB as a power of 2
 
 void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
 	unsigned char* deviceSrcData;
@@ -217,46 +218,60 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 	int chunkRows = 0;
 	int offset = 0;
 
+	int datasize = sizeof(float);
+
 	float ratio = (float)(destRows * destCols) / (float)(srcRows * srcCols);
-	float rat1 = 1.0, ratc1 = 1.0;
-	float rat2 = 1.0, ratc2 = 1.0;
+	ratio = ((1 / ratio) + 1) * datasize;
 
-	if (ratio < 1.0){
-		rat1 = floor(rat1 / ratio);
-		ratc1 = ceil(ratc1 / ratio);
-	}
-	else if (ratio >= 1.0){
-		rat2 = floor(rat2 / ratio);
-		ratc2 = ceil(ratc2 / ratio);
-	}
+	int remainder = destRows * destCols;
+	float rRow = (float)srcRows / destRows;
+	float rCol = (float)srcCols / destCols;
 
-	int datasize1 = sizeof(float);
-	int datasize2 = sizeof(float);
+	int pixels = ceil(MEM_CAP / ratio);
+	int sentinel = 1;
 
-	int chunk_size = MEM_CAP / (ceil((float)datasize1 * ratio) + datasize2);
-	int rounds = ceil((destRows * destCols) / (float)chunk_size);
+	while (remainder > 0){
 
-	for (int step = 0; step < rounds; step++){
-		int remainder = fmin(chunk_size, (destRows * destCols) - (step * chunk_size));
-		printf("Step: %d, Remainder: %d\n", step, (destRows * destCols) - (step * chunk_size));
-		int srcN = ceil((float)remainder * ratio) * datasize1;
-		int destN = remainder * datasize2;
-		if (destN <= 0)
-			break;
+		printf("Pixels: %d\n", pixels);
 
-		blocks = ((destN / datasize2) + threadsPerBlock - 1) / threadsPerBlock;
+		int pix_begin = (destRows * destCols) - remainder;
+		int pix_end = min(destRows * destCols - 1, pix_begin + pixels - 1);
+		printf("Begin: %d, End: %d\n", pix_begin, pix_end);
+
+		int destN = (pix_end - pix_begin + 1) * datasize;
+		blocks = ((destN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
+
+		int sRow = ((float)pix_begin / destCols) * rRow;
+		int sCol = (pix_begin % destCols) * rCol;
+		int src_begin = (sRow * srcCols + sCol);
+
+		sRow = ((float)pix_end / destCols) * rRow;	// (3531 / 1600) * (480 / 1200) = 0.88275
+		sCol = (pix_end % destCols) * rCol;			// (3531 % 1600) * (640 / 1600) = 132.4
+		int src_end = ((sRow + 1) * srcCols + sCol);
+
+		printf("srcRows: %d, srcCols: %d, total: %d\n", srcRows, srcCols, srcRows * srcCols);
+
+		printf("SBegin: %d, SEnd: %d\n", src_begin, src_end);
+
+		int srcN = (src_end - src_begin + 1) * datasize;
 
 		cudaMalloc(&deviceSrcData, srcN);
-		cudaMemcpy(deviceSrcData, input + (int)(step * ceil(chunk_size / ratio)), srcN, cudaMemcpyHostToDevice);
-
 		cudaMalloc(&deviceDestData, destN);
-		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, chunk_size, 0.0);
-		cudaMemcpy(output + offset, deviceDestData, destN, cudaMemcpyDeviceToHost);
+		cudaMemcpy(deviceSrcData, input + src_begin, srcN, cudaMemcpyHostToDevice);
 
-		cudaFree(deviceSrcData);
+		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, chunkRows, offset);
+
+		cudaMemcpy(output + pix_begin, deviceDestData, destN, cudaMemcpyDeviceToHost);
+		
 		cudaFree(deviceDestData);
-		offset += remainder;
+		cudaFree(deviceSrcData);
+
+		remainder -= pix_end - pix_begin + 1;
+		sentinel -= 1;
+
 	}
+
+	
 
 
 }

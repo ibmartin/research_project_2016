@@ -63,12 +63,14 @@ __global__ void directResizeKernel(unsigned char* dest_data, unsigned char* src_
 
 __global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	double rRow = (double)srcRows / destRows;
-	double rCol = (double)srcCols / destCols;
+	float rRow = (float)srcRows / destRows;
+	float rCol = (float)srcCols / destCols;
 
-	int sRow = ((idx + offset) / destCols) * rRow;
-	int sCol = ((idx + offset) % destCols) * rCol;
-	dest_data[idx] = src_data[(sRow * srcCols + sCol) + (idx + offset)];
+	int sRow = ((idx) / destCols) * rRow;
+	int sCol = ((idx) % destCols) * rCol;
+
+	dest_data[idx] = src_data[(int)(sRow * srcCols + sCol)];
+
 }
 
 __global__ void linearResizeKernel(unsigned char* dest_data, unsigned char* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
