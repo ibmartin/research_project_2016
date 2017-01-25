@@ -305,5 +305,10 @@ __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_in
 	}
 }
 
+__global__ void mySiftDOGKernel(float* curr_data, float* next_data, float* dog_data){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+}
+
 #endif
 

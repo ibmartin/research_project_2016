@@ -232,11 +232,11 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 
 	while (remainder > 0){
 
-		printf("Pixels: %d\n", pixels);
+		//printf("Pixels: %d\n", pixels);
 
 		int pix_begin = (destRows * destCols) - remainder;
 		int pix_end = min(destRows * destCols - 1, pix_begin + pixels - 1);
-		printf("Begin: %d, End: %d\n", pix_begin, pix_end);
+		//printf("Begin: %d, End: %d\n", pix_begin, pix_end);
 
 		int destN = (pix_end - pix_begin + 1) * datasize;
 		blocks = ((destN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
@@ -249,9 +249,9 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		sCol = (pix_end % destCols) * rCol;			// (3531 % 1600) * (640 / 1600) = 132.4
 		int src_end = ((sRow + 1) * srcCols + sCol);
 
-		printf("srcRows: %d, srcCols: %d, total: %d\n", srcRows, srcCols, srcRows * srcCols);
+		//printf("srcRows: %d, srcCols: %d, total: %d\n", srcRows, srcCols, srcRows * srcCols);
 
-		printf("SBegin: %d, SEnd: %d\n", src_begin, src_end);
+		//printf("SBegin: %d, SEnd: %d\n", src_begin, src_end);
 
 		int srcN = (src_end - src_begin + 1) * datasize;
 
@@ -828,6 +828,42 @@ void cudaKMeansOld(unsigned char* input, unsigned char* output, int srcRows, int
 
 }
 
+void cudaMySiftDOG(float* current, float* next, float* dog, int curRows, int curCols){
+	float* deviceCurrData;
+	float* deviceNextData;
+	float* deviceDogData;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int datasize = sizeof(float);
 
+	int pixels = MEM_CAP / (3 * datasize);
+
+	int remainder = curRows * curCols;
+
+	while (remainder > 0){
+
+		int pix_begin = (curRows * curCols) - remainder;
+		int pix_end = min(curRows * curCols - 1, pix_begin + pixels - 1);
+
+		int destN = (pix_end - pix_begin + 1) * datasize;
+		int blocks = ((destN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
+
+		cudaMalloc(&deviceCurrData, destN);
+		cudaMalloc(&deviceNextData, destN);
+		cudaMalloc(&deviceDogData, destN);
+		cudaMemcpy(deviceCurrData, current + pix_begin, destN, cudaMemcpyHostToDevice);
+		cudaMemcpy(deviceNextData, next + pix_begin, destN, cudaMemcpyHostToDevice);
+
+		mySiftDOGKernel << <blocks, threadsPerBlock >> >(deviceCurrData, deviceNextData, deviceDogData);
+
+		cudaMemcpy(dog + pix_begin, deviceDogData, destN, cudaMemcpyDeviceToHost);
+
+		cudaFree(deviceCurrData);
+		cudaFree(deviceNextData);
+		cudaFree(deviceDogData);
+
+		remainder -= pixels;
+	}
+
+}
 
 #endif

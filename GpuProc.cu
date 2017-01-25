@@ -13,6 +13,22 @@
 using namespace cv;
 using namespace std;
 
+class keypoint
+{
+public:
+	int idx, idy, oct, index;
+	float angle, scale, mag;
+	bool filtered = false;
+	std::vector<float> descriptors;
+	keypoint(int _idx, int _idy, int _oct, float _angle, int _index){	//Constuctor
+		idx = _idx;
+		idy = _idy;
+		oct = _oct;
+		angle = _angle;
+		index = _index;
+	}
+};
+
 Mat rgb2Gray(Mat image){
 	Mat out = Mat(image.rows, image.cols, CV_8UC1);
 
@@ -236,7 +252,7 @@ Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
 }
 
 Mat mySift(Mat original){
-	Mat out;
+	//Mat out;
 
 	std::vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
@@ -244,6 +260,9 @@ Mat mySift(Mat original){
 	std::string debug_Path = "D://School//Summer 2016//Research//mySift//";
 	std::string img_name = "audrey";
 	std::string ftype = ".png";
+
+	cv::Mat image = frgb2Gray(original);
+	image = fdirectResize(image, image.rows * 2, image.cols * 2);
 
 	int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
 	int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
@@ -254,9 +273,66 @@ Mat mySift(Mat original){
 	//	Sigma = 1.6 was experimentally determined by Lowe to give the best results.  Refer to the 2004 SIFT paper, pages 9 and 10 for discussion
 	float sigma = 1.6;
 
+	uchar scales = 3;
+	uchar octaves = 4;
+	int region = 4;
+	int srcRows = image.rows;
+	int srcCols = image.cols;
 
+	float k = pow(2.0, (1.0 / (float)scales));
+	int s = scales + 3;
 
-	return out;
+	int destRows = srcRows / 2, destCols = srcCols / 2;
+	
+	cv::Mat output = cv::Mat::zeros(destRows, destCols, original.type());
+
+	int curRows = srcRows, curCols = srcCols;
+
+	std::vector<keypoint> keys;
+	std::vector <std::vector<cv::Mat>> dog_oct;	//	Not currently used, meant to store DoG data long term
+	std::vector <std::vector<cv::Mat>> blur_oct;
+
+	int key_count = 0;
+	int scale = 1;
+	int key_index = 0;
+	int bogeys = 0;
+	int gauss_exp = 0;
+
+	for (int oct = 0; oct < octaves; oct++){
+		std::vector<cv::Mat> blur_img;
+		std::vector<cv::Mat> dog_img;
+
+		cv::Mat current = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+		blur_img.push_back(current);
+		gauss_exp++;
+
+		for (int step = 1; step < s; step++){
+			cv::Mat next = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+			cv::Mat dog = cv::Mat::zeros(curRows, curCols, CV_32FC1);
+			blur_img.push_back(next);
+
+			float* curr_data = (float*)current.datastart;
+			float* next_data = (float*)next.datastart;
+			float* dog_data = (float*)dog.datastart;
+
+			cudaMySiftDOG(curr_data, next_data, dog_data, curRows, curCols);
+
+			dog_img.push_back(dog);
+			current = next;
+			gauss_exp++;
+		}
+
+		curRows = curRows / 2;
+		curCols = curCols / 2;
+		image = fdirectResize(image, image.rows / 2, image.cols / 2);
+
+		dog_oct.push_back(dog_img);
+		blur_oct.push_back(blur_img);
+		gauss_exp -= 2;
+
+	}
+	
+	return output;
 }
 
 #endif
