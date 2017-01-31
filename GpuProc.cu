@@ -261,11 +261,14 @@ Mat mySift(Mat original){
 	std::string img_name = "audrey";
 	std::string ftype = ".png";
 
-	cv::Mat image = frgb2Gray(original);
-	image = fdirectResize(image, image.rows * 2, image.cols * 2);
+
+	//cv::Mat image = frgb2Gray(original);
+	//image = fdirectResize(image, image.rows * 2, image.cols * 2);
+	cv::Mat image = linearResize(original, original.rows * 2, original.cols * 2);
+	image = frgb2Gray(image);
 
 	int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
-	int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
+	int full_dog = 2;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
 	int mark_dim = 2;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
 
 	//	The first step is to scale up the input image by a factor of 2 in both dimensions, then apply a gaussian blur with sigma = 1.6
@@ -282,9 +285,7 @@ Mat mySift(Mat original){
 	float k = pow(2.0, (1.0 / (float)scales));
 	int s = scales + 3;
 
-	int destRows = srcRows / 2, destCols = srcCols / 2;
 	
-	cv::Mat output = cv::Mat::zeros(destRows, destCols, original.type());
 
 	int curRows = srcRows, curCols = srcCols;
 
@@ -302,6 +303,7 @@ Mat mySift(Mat original){
 		std::vector<cv::Mat> blur_img;
 		std::vector<cv::Mat> dog_img;
 
+		//printf("Oct: %d\n", oct);
 		cv::Mat current = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
 		blur_img.push_back(current);
 		gauss_exp++;
@@ -324,12 +326,73 @@ Mat mySift(Mat original){
 
 		curRows = curRows / 2;
 		curCols = curCols / 2;
-		image = fdirectResize(image, image.rows / 2, image.cols / 2);
+		image = fdirectResize(image, curRows, curCols);
 
 		dog_oct.push_back(dog_img);
 		blur_oct.push_back(blur_img);
 		gauss_exp -= 2;
 
+	}
+
+	
+	cv::Mat output;
+
+	if (full_dog == 1){
+		int destRows = 4 * original.rows, destCols = (s) * (2 * original.cols);
+		output = cv::Mat::zeros(destRows, destCols, CV_32FC1);
+		float* dest_data = (float*)output.datastart;
+
+		int roff = 0, coff = 0;
+		for (int oct = 0; oct < octaves; oct++){
+			curRows = dog_oct[oct][0].rows, curCols = dog_oct[oct][0].cols;
+			float* curr_data = (float*)blur_oct[oct][0].datastart;
+			for (int i = 0; i < curRows; i++){
+				for (int j = 0; j < curCols; j++){
+					dest_data[(i + roff) * destCols + (j + coff)] = curr_data[i * curCols + j];
+				}
+			}
+			coff += curCols;
+			for (int step = 0; step < s - 1; step++){
+				curr_data = (float*)dog_oct[oct][step].datastart;
+				
+				for (int i = 0; i < curRows; i++){
+					for (int j = 0; j < curCols; j++){
+						dest_data[(i + roff) * destCols + (j + coff)] = curr_data[i * curCols + j];
+					}
+				}
+
+				coff += curCols;
+			}
+			coff = 0;
+			roff += curRows;
+		}
+
+	}
+	else if (full_dog == 2){
+		int destRows = 4 * original.rows, destCols = (s)* (2 * original.cols);
+		output = cv::Mat::zeros(destRows, destCols, CV_32FC1);
+		float* dest_data = (float*)output.datastart;
+
+		int roff = 0, coff = 0;
+		for (int oct = 0; oct < octaves; oct++){
+			curRows = blur_oct[oct][0].rows, curCols = blur_oct[oct][0].cols;
+			for (int step = 0; step < s; step++){
+				float* curr_data = (float*)blur_oct[oct][step].datastart;
+
+				for (int i = 0; i < curRows; i++){
+					for (int j = 0; j < curCols; j++){
+						dest_data[(i + roff) * destCols + (j + coff)] = curr_data[i * curCols + j];
+					}
+				}
+
+				coff += curCols;
+			}
+			coff = 0;
+			roff += curRows;
+		}
+	}
+	else{
+		output = frgb2Gray(original);
 	}
 	
 	return output;

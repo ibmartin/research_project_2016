@@ -134,15 +134,18 @@ __global__ void gaussianFilterKernel(unsigned char* dest_data, unsigned char* sr
 	}*/
 }
 
-__global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double* gKernel, int filter_size, int rows, int cols, int chunkRows, int offset){
+__global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double* gKernel, int filter_size, int rows, int cols, int src_begin, int pix_begin){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	/*if ((idx / 3) / cols > filter_size &&
 	(idx / 3) / cols < rows - filter_size &&
 	(idx / 3) % cols > filter_size &&
 	(idx / 3) % cols < cols - filter_size ){*/
+	int offset = 0;
 
-	int i = ((idx + offset) / 3) / cols;
-	int j = ((idx + offset) / 3) % cols;
+	int i = ((idx + pix_begin)) / cols;
+	int j = ((idx + pix_begin)) % cols;
+
+	int local = pix_begin - src_begin;
 
 	int maxk = min(filter_size, rows - i);
 	int mink = min(filter_size, i);
@@ -151,7 +154,8 @@ __global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double*
 	float tmp = 0;
 	for (int k = -mink; k <= maxk; k++){
 		for (int l = -minl; l <= maxl; l++){
-			tmp += *(gKernel + (k + filter_size) * (2 * filter_size + 1) + (l + filter_size)) * src_data[(idx + offset) + 3 * (k * cols + l)];
+			tmp += gKernel[(k + filter_size) * (2 * filter_size + 1) + (l + filter_size)] * src_data[local + idx + (k * cols + l)];
+			//tmp += *(gKernel + (k + filter_size) * (2 * filter_size + 1) + (l + filter_size)) * src_data[(idx + offset) + (k * cols + l)];
 		}
 	}
 	dest_data[idx] = tmp;
@@ -307,7 +311,7 @@ __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_in
 
 __global__ void mySiftDOGKernel(float* curr_data, float* next_data, float* dog_data){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-
+	dog_data[idx] = 128.0 + (next_data[idx] - curr_data[idx]) * 10.0;
 }
 
 #endif

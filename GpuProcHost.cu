@@ -210,7 +210,7 @@ void cudaDirectResize(unsigned char* input, unsigned char* output, int srcRows, 
 	cudaFree(deviceSrcData);
 }
 
-void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, int destRows, int destCols){
+void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, int destRows, int destCols){	//
 	float* deviceSrcData;
 	float* deviceDestData;
 	int threadsPerBlock = THREADS_PER_BLOCK;
@@ -247,7 +247,7 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 
 		sRow = ((float)pix_end / destCols) * rRow;	// (3531 / 1600) * (480 / 1200) = 0.88275
 		sCol = (pix_end % destCols) * rCol;			// (3531 % 1600) * (640 / 1600) = 132.4
-		int src_end = ((sRow + 1) * srcCols + sCol);
+		int src_end = min(srcRows * srcCols - 1, ((sRow + 1) * srcCols + sCol));
 
 		//printf("srcRows: %d, srcCols: %d, total: %d\n", srcRows, srcCols, srcRows * srcCols);
 
@@ -257,6 +257,7 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 
 		cudaMalloc(&deviceSrcData, srcN);
 		cudaMalloc(&deviceDestData, destN);
+		//printf("Size: %d, src_begin: %d, src_end: %d\n", srcRows * srcCols, src_begin, src_end);
 		cudaMemcpy(deviceSrcData, input + src_begin, srcN, cudaMemcpyHostToDevice);
 
 		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, chunkRows, offset);
@@ -270,9 +271,6 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		sentinel -= 1;
 
 	}
-
-	
-
 
 }
 
@@ -363,41 +361,53 @@ void fCudaGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 	int threadsPerBlock = THREADS_PER_BLOCK;
 	int blocks = 0;
 	int chunkRows = 0;
-	int srcN = 3 * srcRows * srcCols;
+	int datasize = sizeof(float);
+	int srcN = srcRows * srcCols;
 
-	cudaMalloc(&deviceSrcData, srcN*sizeof(float));
 	cudaMalloc(&deviceFilter, (2 * FILTER_SIZE + 1) * (2 * FILTER_SIZE + 1) * sizeof(double));
-	cudaMemcpy(deviceSrcData, input, srcN*sizeof(float), cudaMemcpyHostToDevice);
-	cudaMemcpy(deviceFilter, gKernel, (2 * FILTER_SIZE + 1)*(2 * FILTER_SIZE + 1)*sizeof(double), cudaMemcpyHostToDevice);
+	cudaMemcpy(deviceFilter, gKernel, (2 * FILTER_SIZE + 1) * (2 * FILTER_SIZE + 1) * sizeof(double), cudaMemcpyHostToDevice);
 
-	chunkRows = IMG_CHUNK / srcCols;
+	int remainder = srcRows * srcCols;
+	int pixels = MEM_CAP / 4.0 * datasize;
+
+	chunkRows = MEM_CAP / srcCols;
 	if (chunkRows == 0){
 		chunkRows = srcRows;
 	}
 	int rounds = ceil(srcRows / (double)chunkRows);
 
 	int offset = 0;
-	for (int step = 0; step < rounds; step++){
-		printf("Step\n");
-		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
+	//for (int step = 0; step < rounds; step++){
+	while (remainder > 0){
+
+		int pix_begin = (srcRows * srcCols) - remainder;
+		int pix_end = min(srcRows * srcCols - 1, pix_begin + pixels - 1);
+
+		//int destN = fmin(pixels, remainder);
+		int destN = (pix_end - pix_begin + 1) * datasize;
 		if (destN <= 0){
 			break;
 		}
 
-		blocks = (destN + threadsPerBlock - 1) / threadsPerBlock;
+		blocks = ((destN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
 
-		cudaMalloc(&deviceDestData, destN*sizeof(float));
-		//cudaMalloc(&deviceSrcData, destN*sizeof(float));
+		int src_begin = max((pix_begin - FILTER_SIZE) - (FILTER_SIZE * srcCols), 0);
+		int src_end = min((pix_end + FILTER_SIZE) + (FILTER_SIZE * srcCols), srcRows * srcCols - 1);
+		int srcN = (src_end - src_begin + 1) * datasize;
 
-		//cudaMemcpy(deviceSrcData, input + offset, destN*sizeof(float), cudaMemcpyHostToDevice);
+		cudaMalloc(&deviceDestData, destN);
+		cudaMalloc(&deviceSrcData, srcN);
 
-		//fGaussianFilterKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, deviceFilter, FILTER_SIZE, srcRows, srcCols, chunkRows, offset);
+		cudaMemcpy(deviceSrcData, input + src_begin, srcN, cudaMemcpyHostToDevice);
 
-		//cudaMemcpy(output + offset, deviceDestData, destN*sizeof(float), cudaMemcpyDeviceToHost);
+		fGaussianFilterKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, deviceFilter, FILTER_SIZE, srcRows, srcCols, src_begin, pix_begin);
+
+		cudaMemcpy(output + pix_begin, deviceDestData, destN, cudaMemcpyDeviceToHost);
 		cudaFree(deviceDestData);
-		//cudaFree(deviceSrcData);
+		cudaFree(deviceSrcData);
 
 		offset += destN;
+		remainder -= pixels;
 	}
 
 	cudaFree(deviceFilter);
