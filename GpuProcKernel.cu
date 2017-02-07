@@ -71,6 +71,10 @@ __global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRo
 
 	dest_data[idx] = src_data[(int)(sRow * srcCols + sCol)];
 
+	if ((offset + idx) / destCols == 11 && (offset + idx) % destCols <= 76){
+		printf("sRow: %d, sCol: %d\n", sRow, sCol);
+	}
+
 }
 
 __global__ void linearResizeKernel(unsigned char* dest_data, unsigned char* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
@@ -311,7 +315,47 @@ __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_in
 
 __global__ void mySiftDOGKernel(float* curr_data, float* next_data, float* dog_data){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	dog_data[idx] = 128.0 + (next_data[idx] - curr_data[idx]) * 10.0;
+	dog_data[idx] = 128.0 + (next_data[idx] - curr_data[idx]);
+}
+
+__global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float* next_data, unsigned int* key_str, int curRows, int curCols, int pix_begin, int src_begin, int block_begin, int keybits){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int pix_loc = pix_begin + idx;
+	int src_loc = pix_loc - src_begin;
+	int i = pix_loc / curCols, j = pix_loc % curCols;
+
+	if ( i != 0 && i != curRows - 1 && j != 0 && j != curCols - 1 ){
+	//if (true){
+		int block_slot = (pix_loc / keybits) - block_begin;
+		int block_loc = (pix_loc % keybits);
+		float val = curr_data[src_loc];
+		unsigned int match = powf(2, block_loc);
+
+		int counter = 0;
+
+		float val_c = 0;
+		for (int k = -1; k <= 1; k++){
+			for (int l = -1; l <= 1; l++){
+				val_c = prev_data[src_loc + (k * curCols) + l] - val;
+				if (val_c > 0) counter += 1;
+				else if (val_c < 0) counter -= 1;
+
+				val_c = curr_data[src_loc + (k * curCols) + l] - val;
+				if (val_c > 0) counter += 1;
+				else if (val_c < 0) counter -= 1;
+
+				val_c = next_data[src_loc + (k * curCols) + l] - val;
+				if (val_c > 0) counter += 1;
+				else if (val_c < 0) counter -= 1;
+			}
+		}
+
+		if (abs(counter) == 26){
+			atomicOr(key_str + block_slot, match);
+		}
+
+	}
+
 }
 
 #endif

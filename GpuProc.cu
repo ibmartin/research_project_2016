@@ -172,7 +172,7 @@ Mat fGaussianFilter(Mat image, double sigma){
 	Mat out = Mat::zeros(image.rows, image.cols, CV_32FC1);
 	float* input = (float*)image.datastart;
 	float* output = (float*)out.datastart;
-	fCudaGaussianFilter(input, output, gKernel, image.rows, image.cols);
+	cudafGaussianFilter(input, output, gKernel, image.rows, image.cols);
 
 	return out;
 
@@ -268,7 +268,7 @@ Mat mySift(Mat original){
 	image = frgb2Gray(image);
 
 	int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
-	int full_dog = 2;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
+	int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
 	int mark_dim = 2;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
 
 	//	The first step is to scale up the input image by a factor of 2 in both dimensions, then apply a gaussian blur with sigma = 1.6
@@ -306,7 +306,7 @@ Mat mySift(Mat original){
 		//printf("Oct: %d\n", oct);
 		cv::Mat current = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
 		blur_img.push_back(current);
-		gauss_exp++;
+		gauss_exp += 1;
 
 		for (int step = 1; step < s; step++){
 			cv::Mat next = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
@@ -324,6 +324,43 @@ Mat mySift(Mat original){
 			gauss_exp++;
 		}
 
+		for (int step = 1; step < s - 2; step++){
+			int temp_exp = gauss_exp - s + (step);
+
+			float temp_scale = ((pow(k, temp_exp) * sigma) - (pow(k, temp_exp - 1) * sigma)) / 2 + (pow(k, temp_exp - 1) * sigma);
+
+			float* prev_data = (float*)dog_img[step - 1].datastart;
+			float* curr_data = (float*)dog_img[step + 0].datastart;
+			float* next_data = (float*)dog_img[step + 1].datastart;
+
+			int bit_str_size = ceil((curRows * curCols) / 32.0);
+			//bit_str_size = 1;
+			printf("Size: %d\n", bit_str_size);
+			unsigned int* key_str = new unsigned int[bit_str_size];
+			for (int i = 0; i < bit_str_size; i++){
+				key_str[i] = 0;
+			}
+
+			//call
+			cudaMySiftKeypoints(prev_data, curr_data, next_data, key_str, curRows, curCols, bit_str_size);
+
+			for (int key_block = 0; key_block < bit_str_size; key_block++){
+				for (int entry = 0; entry < 32; entry++){
+					if (key_str[key_block] & (int)exp2(entry)){
+						int id = (key_block * 32 + entry);
+						int idx = id / curCols;
+						int idy = id % curCols;
+						keypoint newKey(idx, idy, oct, 0, step);
+						newKey.scale = temp_scale;
+						keys.push_back(newKey);
+					}
+				}
+			}
+
+			delete[] key_str;
+
+		}
+
 		curRows = curRows / 2;
 		curCols = curCols / 2;
 		image = fdirectResize(image, curRows, curCols);
@@ -334,8 +371,11 @@ Mat mySift(Mat original){
 
 	}
 
-	
+	printf("Keys: %d\n", keys.size());
+
 	cv::Mat output;
+
+	return dog_oct[0][0];
 
 	if (full_dog == 1){
 		int destRows = 4 * original.rows, destCols = (s) * (2 * original.cols);

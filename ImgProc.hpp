@@ -45,7 +45,7 @@ namespace img_proc{
 	cv::Mat reverse(cv::Mat image);
 	cv::Mat gammaCorrection(cv::Mat image, double gamma);
 	cv::Mat directResize(cv::Mat image, int rows, int cols);
-	cv::Mat fdirectResize(cv::Mat image, int rows, int cols);
+	cv::Mat fdirectResize(cv::Mat image, int destRows, int destCols);
 	cv::Mat linearResize(cv::Mat image, int rows, int cols);
 	cv::Mat flinearResize(cv::Mat image, int rows, int cols);
 	void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma);
@@ -73,6 +73,8 @@ namespace img_proc{
 	kd_node* mySiftKDIterSearch(kd_node* root, std::vector<keypoint>& keys, keypoint& search_key);
 	kd_node* mySiftKDSearch(kd_node root, std::vector<keypoint>& keys, keypoint& search_key);
 	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search);
+	cv::Mat bump_map(int dim);
+	cv::Mat diff_count(cv::Mat image1, cv::Mat image2);
 }
 
 #endif
