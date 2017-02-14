@@ -335,7 +335,6 @@ Mat mySift(Mat original){
 
 			int bit_str_size = ceil((curRows * curCols) / 32.0);
 			//bit_str_size = 1;
-			printf("Size: %d\n", bit_str_size);
 			unsigned int* key_str = new unsigned int[bit_str_size];
 			for (int i = 0; i < bit_str_size; i++){
 				key_str[i] = 0;
@@ -371,7 +370,26 @@ Mat mySift(Mat original){
 
 	}
 
-	printf("Keys: %d\n", keys.size());
+	//or_mag
+	std::vector<std::vector<float*>> or_mag_oct;
+	curRows = srcRows;
+	curCols = srcCols;
+
+	for (int oct = 0; oct < octaves; oct++){
+		std::vector<float*> or_mag_current;
+		for (int step = 0; step < s; step++){
+			cv::Mat& current = blur_oct[oct][step];
+
+			float* curr_data = (float*)current.datastart;
+			float* or_mag = new float[2 * curRows * curCols];
+
+			cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
+			or_mag_current.push_back(or_mag);
+		}
+		or_mag_oct.push_back(or_mag_current);
+	}
+
+	//printf("Keys: %d\n", keys.size());
 
 	cv::Mat output;
 

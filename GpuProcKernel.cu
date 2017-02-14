@@ -12,6 +12,8 @@
 #include <cuda_runtime.h>
 #include "device_launch_parameters.h"
 
+#define M_PI				3.14159265358979323846  /* pi */
+
 //__global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset);
 
 __global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset){
@@ -71,9 +73,9 @@ __global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRo
 
 	dest_data[idx] = src_data[(int)(sRow * srcCols + sCol)];
 
-	if ((offset + idx) / destCols == 11 && (offset + idx) % destCols <= 76){
-		printf("sRow: %d, sCol: %d\n", sRow, sCol);
-	}
+	//if ((offset + idx) / destCols == 11 && (offset + idx) % destCols <= 76){
+	//	printf("sRow: %d, sCol: %d\n", sRow, sCol);
+	//}
 
 }
 
@@ -356,6 +358,40 @@ __global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float*
 
 	}
 
+}
+
+__global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, int curCols, int pix_begin, int pix_end, int src_begin, int src_end, int offset){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int pix_local = idx + pix_begin;
+
+	int src_local = pix_local - src_begin;
+
+	int i = pix_local / curCols;
+	int j = pix_local % curCols;
+
+	int pi = 1, pj = 1, mi = 1, mj = 1;
+
+	if (i == 0) mi = 0;
+	else if (i == curRows - 1) pi = 0;
+
+	if (j == 0) mj = 0;
+	else if (j == curCols - 1) pj = 0;
+
+	float val = pow(curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)], 2) + pow(curr_data[src_local + pj] - curr_data[src_local - mj], 2);
+	val = sqrt(val);
+	or_mag[2 * idx + 1] = val;
+
+	float val1 = curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)];
+	float val2 = curr_data[src_local + pj] - curr_data[src_local - mj];
+	val = atan2f(val2, val1);
+	if (val < 0){
+		val = (2 * M_PI) + val;
+	}
+	else if (val > 2 * M_PI){
+		val = val - (2 * M_PI);
+	}
+
+	or_mag[2 * idx] = val;
 }
 
 #endif

@@ -932,4 +932,38 @@ void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, u
 	}
 }
 
+void cudaMySiftOrMagGen(float* curr_data, float* or_mag, int curRows, int curCols){
+	float* deviceCurrData;
+	float* deviceOrMag;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int datasize = sizeof(float);
+
+	int offset = 0;
+	int remainder = curRows * curCols;
+
+	int pixels = (MEM_CAP) / (3.2 * datasize);
+
+	while (remainder > 0){
+
+		int pix_begin = (curRows * curCols - remainder);
+		int pix_end = min(curRows * curCols - 1, pix_begin + pixels - 1);
+		int pixN = (pix_end - pix_begin) * 2 * datasize;
+
+		int src_begin = max(0, pix_begin - curCols - 1);
+		int src_end = min(curRows * curCols - 1, pix_end + curCols + 1);
+		int srcN = src_end - src_begin * datasize;
+		int blocks = ((pixN / (2 * datasize)) + threadsPerBlock - 1) / threadsPerBlock;
+
+		cudaMalloc(&deviceCurrData, srcN);
+		cudaMalloc(&deviceOrMag, pixN);
+		cudaMemcpy(deviceCurrData, curr_data + src_begin, srcN, cudaMemcpyHostToDevice);
+
+		mySiftOrMagKernel << <blocks, threadsPerBlock >> >(deviceCurrData, deviceOrMag, curRows, curCols, pix_begin, pix_end, src_begin, src_end, offset);
+		cudaMemcpy(or_mag + pix_begin * 2, deviceOrMag, pixN, cudaMemcpyDeviceToHost);
+
+		offset += pixels;
+		remainder -= pixels;
+	}
+}
+
 #endif
