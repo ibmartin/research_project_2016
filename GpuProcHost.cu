@@ -242,8 +242,9 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		int destN = (pix_end - pix_begin + 1) * datasize;
 		blocks = ((destN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
 
-		int sRow = ((float)pix_begin / destCols) * rRow;
-		int sCol = (pix_begin % destCols) * rCol;
+		int sRow = (pix_begin / destCols) * rRow;
+		//int sCol = (pix_begin % destCols) * rCol;
+		int sCol = 0;
 		int src_begin = (sRow * srcCols + sCol);
 
 		sRow = ((float)pix_end / destCols) * rRow;	// (3531 / 1600) * (480 / 1200) = 0.88275
@@ -253,6 +254,13 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		//printf("srcRows: %d, srcCols: %d, total: %d\n", srcRows, srcCols, srcRows * srcCols);
 
 		//printf("SBegin: %d, SEnd: %d\n", src_begin, src_end);
+		/*if (pix_begin / destCols <= 11 && pix_end / destCols >= 11){
+			printf("Pix Begin: %d, %d\n", pix_begin / destCols, pix_begin % destCols);
+			printf("  sRow: %f, sCol: %f\n", (pix_begin / destCols) * rRow, (pix_begin % destCols) * rCol);
+			printf("Pix End  : %d, %d\n", pix_end / destCols, pix_end % destCols);
+			printf("Src Begin: %d, %d\n", src_begin / srcCols, src_begin % srcCols);
+			printf("Src End  : %d, %d\n", src_end / srcCols, src_end % srcCols);
+		}*/
 
 		int srcN = (src_end - src_begin + 1) * datasize;
 
@@ -261,7 +269,7 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		//printf("Size: %d, src_begin: %d, src_end: %d\n", srcRows * srcCols, src_begin, src_end);
 		cudaMemcpy(deviceSrcData, input + src_begin, srcN, cudaMemcpyHostToDevice);
 
-		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, chunkRows, pix_begin);
+		fdirectResizeKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, destRows, destCols, pix_begin, src_begin);
 
 		cudaMemcpy(output + pix_begin, deviceDestData, destN, cudaMemcpyDeviceToHost);
 		
@@ -877,17 +885,18 @@ void cudaMySiftDOG(float* current, float* next, float* dog, int curRows, int cur
 
 }
 
-void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, unsigned int* key_str, int curRows, int curCols, int key_str_size){
+void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, char* answers, unsigned int* key_str, int curRows, int curCols, int key_str_size){
 	float* devicePrevData;
 	float* deviceCurrData;
 	float* deviceNextData;
+	char*  deviceAnswers;
 	unsigned int* deviceKeyStr;
 	int threadsPerBlock = THREADS_PER_BLOCK;
 	int datasize = sizeof(float);
 	int keysize = sizeof(unsigned int);
 	int keybits = keysize * 8;
 
-	int pixels = (MEM_CAP) / (3.2 * datasize);
+	int pixels = (MEM_CAP) / (3.5 * datasize);
 	pixels -= ceil(pixels / (float)keybits);
 	printf("Pixels: %d\n", pixels);
 
@@ -906,6 +915,7 @@ void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, u
 		int src_end = min(curRows * curCols - 1, pix_end + curCols + 1);
 
 		int pixN = (pix_end - pix_begin + 1) * datasize;
+		int ansN = (pix_end - pix_begin + 1);
 		int srcN = (src_end - src_begin + 1) * datasize;
 		int blocks = ((pixN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
 		int strN = (block_end - block_begin + 1) * keysize;
@@ -913,19 +923,22 @@ void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, u
 		cudaMalloc(&devicePrevData, srcN);
 		cudaMalloc(&deviceCurrData, srcN);
 		cudaMalloc(&deviceNextData, srcN);
+		cudaMalloc(&deviceAnswers, ansN);
 		cudaMalloc(&deviceKeyStr, strN);
 		cudaMemcpy(devicePrevData, prev_data + src_begin, srcN, cudaMemcpyHostToDevice);
 		cudaMemcpy(deviceCurrData, curr_data + src_begin, srcN, cudaMemcpyHostToDevice);
 		cudaMemcpy(deviceNextData, next_data + src_begin, srcN, cudaMemcpyHostToDevice);
 		cudaMemcpy(deviceKeyStr, key_str + block_begin, strN, cudaMemcpyHostToDevice);
 
-		mySiftKeypointsKernel << <blocks, threadsPerBlock >> >(devicePrevData, deviceCurrData, deviceNextData, deviceKeyStr, curRows, curCols, pix_begin, src_begin, block_begin, keybits);
+		mySiftKeypointsKernel << <blocks, threadsPerBlock >> >(devicePrevData, deviceCurrData, deviceNextData, deviceAnswers, deviceKeyStr, curRows, curCols, pix_begin, src_begin, block_begin, keybits);
 
 		cudaMemcpy(key_str + block_begin, deviceKeyStr, strN, cudaMemcpyDeviceToHost);
+		cudaMemcpy(answers + pix_begin, deviceAnswers, ansN, cudaMemcpyDeviceToHost);
 
 		cudaFree(devicePrevData);
 		cudaFree(deviceCurrData);
 		cudaFree(deviceNextData);
+		cudaFree(deviceAnswers);
 		cudaFree(deviceKeyStr);
 
 		remainder -= pixels;

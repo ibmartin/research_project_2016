@@ -63,18 +63,21 @@ __global__ void directResizeKernel(unsigned char* dest_data, unsigned char* src_
 	}
 }
 
-__global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRows, int srcCols, int destRows, int destCols, int chunkRows, int offset){
+__global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRows, int srcCols, int destRows, int destCols, int pix_begin, int src_begin){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int pix_local = pix_begin + idx;
 	float rRow = (float)srcRows / destRows;
 	float rCol = (float)srcCols / destCols;
 
-	int sRow = ((idx) / destCols) * rRow;
-	int sCol = ((idx) % destCols) * rCol;
+	int sRow = ((pix_local) / destCols) * rRow;
+	int sCol = ((pix_local) % destCols) * rCol;
 
-	dest_data[idx] = src_data[(int)(sRow * srcCols + sCol)];
+	int src_local = (sRow * srcCols + sCol) - src_begin;
+	dest_data[idx] = src_data[src_local];
 
-	//if ((offset + idx) / destCols == 11 && (offset + idx) % destCols <= 76){
-	//	printf("sRow: %d, sCol: %d\n", sRow, sCol);
+	//if ((pix_local) / destCols == 11 && (pix_local) % destCols <= 307){
+	//	printf("    pix_local: %d, %d;  sRow: %d, sCol: %d\n", (pix_local / destCols), (pix_local % destCols), sRow, sCol);
+	//	dest_data[idx] = 255.0;
 	//}
 
 }
@@ -320,7 +323,7 @@ __global__ void mySiftDOGKernel(float* curr_data, float* next_data, float* dog_d
 	dog_data[idx] = 128.0 + (next_data[idx] - curr_data[idx]);
 }
 
-__global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float* next_data, unsigned int* key_str, int curRows, int curCols, int pix_begin, int src_begin, int block_begin, int keybits){
+__global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float* next_data, char* answers, unsigned int* key_str, int curRows, int curCols, int pix_begin, int src_begin, int block_begin, int keybits){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	int pix_loc = pix_begin + idx;
 	int src_loc = pix_loc - src_begin;
@@ -331,7 +334,7 @@ __global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float*
 		int block_slot = (pix_loc / keybits) - block_begin;
 		int block_loc = (pix_loc % keybits);
 		float val = curr_data[src_loc];
-		unsigned int match = powf(2, block_loc);
+		//unsigned int match = (unsigned int)exp2f(block_loc);
 
 		int counter = 0;
 
@@ -353,7 +356,11 @@ __global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float*
 		}
 
 		if (abs(counter) == 26){
-			atomicOr(key_str + block_slot, match);
+			//atomicOr(key_str + block_slot, match);
+			answers[idx] = 1;
+		}
+		else{
+			answers[idx] = 0;
 		}
 
 	}

@@ -251,6 +251,26 @@ Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
 	return output;
 }
 
+bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
+	std::ofstream key_file;
+	key_file.open("D://School//Summer 2016//Research//gray//keys_gpu.txt");
+
+	for (keypoint& key : keys){
+		if (!key.filtered){
+			key_file << std::to_string(key.idx) << ":" << std::to_string(key.idy) << ":" << std::to_string(key.oct) << ":" << std::to_string(key.index) << ":";
+			key_file << std::to_string(key.angle) << ":" << std::to_string(key.scale);
+
+			for (float val : key.descriptors){
+				key_file << ":" << std::to_string(val);
+			}
+			key_file << ":" << std::endl;
+		}
+	}
+
+	key_file.close();
+	return true;
+}
+
 Mat mySift(Mat original){
 	//Mat out;
 
@@ -340,12 +360,15 @@ Mat mySift(Mat original){
 				key_str[i] = 0;
 			}
 
-			//call
-			cudaMySiftKeypoints(prev_data, curr_data, next_data, key_str, curRows, curCols, bit_str_size);
+			char* answers = new char[curRows * curCols];
 
-			for (int key_block = 0; key_block < bit_str_size; key_block++){
+			//call
+			cudaMySiftKeypoints(prev_data, curr_data, next_data, answers, key_str, curRows, curCols, bit_str_size);
+
+			/*for (int key_block = 0; key_block < bit_str_size; key_block++){
 				for (int entry = 0; entry < 32; entry++){
-					if (key_str[key_block] & (int)exp2(entry)){
+					if (key_str[key_block] & (unsigned int)powf(2, entry) != 0){
+					//if (key_str[key_block] & (int)exp2(entry)){
 						int id = (key_block * 32 + entry);
 						int idx = id / curCols;
 						int idy = id % curCols;
@@ -354,9 +377,22 @@ Mat mySift(Mat original){
 						keys.push_back(newKey);
 					}
 				}
+			}*/
+
+			for (int i = 0; i < curRows; i++){
+				for (int j = 0; j < curCols; j++){
+					if (answers[i * curCols + j] == 1){
+						int idx = (i * curCols + j) / curCols;
+						int idy = (i * curCols + j) % curCols;
+						keypoint newKey(idx, idy, oct, 0, step);
+						newKey.scale = temp_scale;
+						keys.push_back(newKey);
+					}
+				}
 			}
 
 			delete[] key_str;
+			delete[] answers;
 
 		}
 
@@ -369,6 +405,9 @@ Mat mySift(Mat original){
 		gauss_exp -= 2;
 
 	}
+
+	printf("Keys: %d\n", keys.size());
+	mySiftWriteKeyFile(keys);
 
 	//or_mag
 	std::vector<std::vector<float*>> or_mag_oct;
@@ -383,13 +422,11 @@ Mat mySift(Mat original){
 			float* curr_data = (float*)current.datastart;
 			float* or_mag = new float[2 * curRows * curCols];
 
-			cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
+			//cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
 			or_mag_current.push_back(or_mag);
 		}
 		or_mag_oct.push_back(or_mag_current);
 	}
-
-	//printf("Keys: %d\n", keys.size());
 
 	cv::Mat output;
 

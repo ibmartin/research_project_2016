@@ -1154,7 +1154,9 @@ namespace img_proc{
 			gauss_exp -= 2;
 		}	//	End of main work loop
 
-		printf("Keys Size: %d\n", key_count);
+		//printf("Keys Size: %d\n", key_count);
+		printf("Keys Size: %d\n", keys.size());
+		mySiftWriteKeyFile(keys);
 
 		return dog_oct[0][0];
 
@@ -1756,7 +1758,7 @@ namespace img_proc{
 
 	bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
 		std::ofstream key_file;
-		key_file.open("D://School//Summer 2016//Research//mySift//keys.txt");
+		key_file.open("D://School//Summer 2016//Research//gray//keys_cpu.txt");
 
 		for (keypoint& key : keys){
 			if (!key.filtered){
@@ -2135,11 +2137,11 @@ namespace img_proc{
 				int idx = i * cols + j;
 				if (data_1[idx] != data_2[idx]){ 
 					dcount++; 
-					data_1[idx] = data_1[idx];
+					data_1[idx] = data_2[idx];
 				}
 				else{
-					//data_1[idx] = data_2[idx];
-					data_1[idx] = 0.0;
+					data_1[idx] = data_2[idx];
+					//data_1[idx] = 0.0;
 				}
 			}
 		}
