@@ -271,6 +271,159 @@ bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
 	return true;
 }
 
+int index(int idx, int idy, int cols, int type){
+	if (type == 1){
+		return 3 * (idx * cols + idy);
+	}
+	else if (type == 0){
+		return idx * cols + idy;
+	}
+	return 0;
+}
+
+cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py){
+	cv::Mat result = cv::Mat::zeros(3, 1, CV_32FC1);
+	int rows = neighbors[1].rows, cols = neighbors[1].cols;
+	float* cur_ptr = (float*)neighbors[1].datastart;
+	float* pre_ptr = (float*)neighbors[0].datastart;
+	float* nex_ptr = (float*)neighbors[2].datastart;
+
+	const float dx = ((float)cur_ptr[index(px - 1, py, cols, 0)] - (float)cur_ptr[index(px + 1, py, cols, 0)]) / 2.0;
+	const float dy = ((float)cur_ptr[index(px, py - 1, cols, 0)] - (float)cur_ptr[index(px, py + 1, cols, 0)]) / 2.0;
+	const float ds = ((float)pre_ptr[index(px, py, cols, 0)] - (float)nex_ptr[index(px, py, cols, 0)]) / 2.0;
+
+	float* res_ptr = (float*)result.datastart;
+	res_ptr[0] = dx;
+	res_ptr[1] = dy;
+	res_ptr[2] = ds;
+
+	return result;
+}
+
+cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py){
+	cv::Mat result = cv::Mat::zeros(3, 3, CV_32FC1);
+
+	int rows = neighbors[1].rows, cols = neighbors[1].cols;
+	float* cur_ptr = (float*)neighbors[1].datastart;
+	float* pre_ptr = (float*)neighbors[0].datastart;
+	float* nex_ptr = (float*)neighbors[2].datastart;
+
+	const float dxx = (float)(cur_ptr[index(px + 1, py, cols, 0)] + cur_ptr[index(px - 1, py, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
+	const float dyy = (float)(cur_ptr[index(px, py + 1, cols, 0)] + cur_ptr[index(px, py - 1, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
+	const float dss = (float)(nex_ptr[index(px, py, cols, 0)] + pre_ptr[index(px, py, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
+	const float dxy = (float)(cur_ptr[index(px + 1, py + 1, cols, 0)] - cur_ptr[index(px - 1, py + 1, cols, 0)] - cur_ptr[index(px + 1, py - 1, cols, 0)] + cur_ptr[index(px - 1, py - 1, cols, 0)]) / 2.0;
+	const float dxs = (float)(nex_ptr[index(px + 1, py, cols, 0)] - nex_ptr[index(px - 1, py, cols, 0)] - pre_ptr[index(px + 1, py, cols, 0)] + pre_ptr[index(px - 1, py, cols, 0)]) / 2.0;
+	const float dys = (float)(nex_ptr[index(px, py + 1, cols, 0)] - nex_ptr[index(px, py - 1, cols, 0)] - pre_ptr[index(px, py + 1, cols, 0)] + pre_ptr[index(px, py - 1, cols, 0)]) / 2.0;
+
+	float* res_ptr = (float*)result.datastart;
+
+	res_ptr[0] = dxx;
+	res_ptr[1] = dxy;
+	res_ptr[2] = dxs;
+	res_ptr[3] = dxy;
+	res_ptr[4] = dyy;
+	res_ptr[5] = dys;
+	res_ptr[6] = dxs;
+	res_ptr[7] = dys;
+	res_ptr[8] = dss;
+
+	return result;
+}
+
+void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
+	float r = 10;
+	float t = std::pow(r + 1, 2) / r;
+
+	int key_count = keys.size();
+	int key_index = 0;
+
+	while (key_index < key_count){
+		keypoint& key_now = keys[key_index];
+		std::vector<cv::Mat> neighbors;
+		neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index - 1]);
+		neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index]);
+		neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index + 1]);
+		//printf("Key: %d, idx: %d, idy: %d, oct: %d\n", key_index, key_now.idx, key_now.idy, key_now.oct);
+
+		cv::Mat foDer = mySift_foDer(neighbors, key_now.idx, key_now.idy);
+		cv::Mat soDer = mySift_soDer(neighbors, key_now.idx, key_now.idy);
+
+		cv::Mat neg_soDer = soDer * -1;
+
+		float det = 0;	//Find Det(soDer)
+		det += soDer.at<float>(0, 0) * ((soDer.at<float>(1, 1) * soDer.at<float>(2, 2)) - (soDer.at<float>(2, 1) * soDer.at<float>(1, 2)));
+		det -= soDer.at<float>(0, 1) * ((soDer.at<float>(1, 0) * soDer.at<float>(2, 2)) - (soDer.at<float>(2, 0) * soDer.at<float>(1, 2)));
+		det += soDer.at<float>(0, 2) * ((soDer.at<float>(1, 0) * soDer.at<float>(2, 1)) - (soDer.at<float>(2, 0) * soDer.at<float>(1, 1)));
+
+		if (det == 0){
+			key_now.filtered = true;
+			key_index++;
+			continue;
+		}
+
+		const float dxx = soDer.at<float>(0, 0);
+		const float dyy = soDer.at<float>(1, 1);
+		const float dxy = soDer.at<float>(0, 1);
+		float* tptr = (float*)foDer.datastart;
+
+		float vals[4];
+		cv::Mat ems = cv::Mat::zeros(3, 3, CV_32F);
+		for (int a = 0; a < 3; a++){
+			for (int b = 0; b < 3; b++){
+				int box = 0;
+				for (int i = 0; i < 3; i++){
+					if (i == a) continue;
+					for (int j = 0; j < 3; j++){
+						if (j == b) continue;
+						vals[box] = neg_soDer.at<float>(i, j);
+						box++;
+					}
+				}
+				ems.at<float>(a, b) = ((vals[0] * vals[3]) - (vals[1] * vals[2])) * pow(-1, 3 * a + b) / det;
+			}
+		}
+		cv::Mat emt = cv::Mat::zeros(3, 3, CV_32F);
+		for (int a = 0; a < 3; a++){	// Transpose
+			for (int b = 0; b < 3; b++){
+				emt.at<float>(a, b) = ems.at<float>(b, a);
+			}
+		}
+
+		cv::Mat extreme = emt * foDer;
+
+		float* exptr = (float*)extreme.datastart;
+
+		if (abs(exptr[0]) > 0.5 || abs(exptr[1]) > 0.5 || abs(exptr[2]) > 0.5){
+			key_now.filtered = true;
+			key_index++;
+			continue;
+		}
+
+		float ex_val = 0.0;
+		for (int i = 0; i < 3; i++){
+			ex_val += tptr[i] * exptr[i];
+		}
+		ex_val *= 0.5;
+		ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx, key_now.idy);
+		if (abs(ex_val) < 0.03){
+			//printf("ex_val: %f\n", abs(ex_val));	//Fix Later
+			key_now.filtered = true;
+			key_index++;
+			continue;
+		}
+
+		float h_trace = dxx + dyy;
+		float h_det = dxx * dyy - pow(dxy, 2);
+
+		if (h_det <= 0 || pow(h_trace, 2) / h_det > t){
+			key_now.filtered = true;
+		}
+
+		key_index++;
+	}
+
+}
+
 Mat mySift(Mat original){
 	//Mat out;
 
@@ -385,6 +538,7 @@ Mat mySift(Mat original){
 						int idx = (i * curCols + j) / curCols;
 						int idy = (i * curCols + j) % curCols;
 						keypoint newKey(idx, idy, oct, 0, step);
+						//printf("    New Key, idx: %d, idy: %d, oct: %d, step: %d\n", idx, idy, oct, step);
 						newKey.scale = temp_scale;
 						keys.push_back(newKey);
 					}
@@ -399,15 +553,14 @@ Mat mySift(Mat original){
 		curRows = curRows / 2;
 		curCols = curCols / 2;
 		image = fdirectResize(image, curRows, curCols);
+		cudaDeviceSynchronize();
 
 		dog_oct.push_back(dog_img);
 		blur_oct.push_back(blur_img);
 		gauss_exp -= 2;
 
 	}
-
-	printf("Keys: %d\n", keys.size());
-	mySiftWriteKeyFile(keys);
+	cudaDeviceSynchronize();
 
 	//or_mag
 	std::vector<std::vector<float*>> or_mag_oct;
@@ -416,20 +569,48 @@ Mat mySift(Mat original){
 
 	for (int oct = 0; oct < octaves; oct++){
 		std::vector<float*> or_mag_current;
+		curRows = blur_oct[oct][0].rows;  curCols = blur_oct[oct][0].cols;
 		for (int step = 0; step < s; step++){
+
 			cv::Mat& current = blur_oct[oct][step];
 
 			float* curr_data = (float*)current.datastart;
+			//float* curr_data = (float*)blur_oct[oct][step].datastart;
 			float* or_mag = new float[2 * curRows * curCols];
 
-			//cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
+			//cudaDeviceSynchronize();
+			cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
+			//cudaTest(curRows, curCols);
 			or_mag_current.push_back(or_mag);
 		}
 		or_mag_oct.push_back(or_mag_current);
 	}
 
+	printf("Keys: %d\n", keys.size());
+
+	mySiftEdgeResponses(dog_oct, keys);
+
+	int unfiltered = 0;
+	std::vector<keypoint>::iterator iter;
+	for (iter = keys.begin(); iter != keys.end();){
+		if ((*iter).filtered){
+			iter = keys.erase(iter);
+			//iter++;
+		}
+		else{
+			unfiltered++;
+			iter++;
+		}
+	}
+
+	key_count = keys.size();
+
+	printf("Unfiltered: %d\n", unfiltered);
+	mySiftWriteKeyFile(keys);
+
 	cv::Mat output;
 
+	cudaDeviceSynchronize();
 	return dog_oct[0][0];
 
 	if (full_dog == 1){

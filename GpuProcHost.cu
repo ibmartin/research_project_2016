@@ -15,6 +15,8 @@
 //#define MEM_CAP				32768 //32 KB as a power of 2 (2 ^ 15)
 //#define MEM_CAP				16384 //16 KB as a power of 2 (2 ^ 14)
 
+#define CUDA_CALL(x) {cudaError_t cuda_error__ = (x); if (cuda_error__) printf("CUDA error: " #x " returned \"%s\"\n", cudaGetErrorString(cuda_error__));}
+
 void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
@@ -280,7 +282,7 @@ void cudafDirectResize(float* input, float* output, int srcRows, int srcCols, in
 		sentinel -= 1;
 
 	}
-
+	return;
 }
 
 void cudaLinearResize(unsigned char* input, unsigned char* output, int srcRows, int srcCols, int destRows, int destCols){
@@ -420,7 +422,7 @@ void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 	}
 
 	cudaFree(deviceFilter);
-	cudaFree(deviceSrcData);
+	//cudaFree(deviceSrcData);
 
 }
 
@@ -898,7 +900,7 @@ void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, c
 
 	int pixels = (MEM_CAP) / (3.5 * datasize);
 	pixels -= ceil(pixels / (float)keybits);
-	printf("Pixels: %d\n", pixels);
+	//printf("Pixels: %d\n", pixels);
 
 	int remainder = curRows * curCols;
 
@@ -924,25 +926,96 @@ void cudaMySiftKeypoints(float* prev_data, float* curr_data, float* next_data, c
 		cudaMalloc(&deviceCurrData, srcN);
 		cudaMalloc(&deviceNextData, srcN);
 		cudaMalloc(&deviceAnswers, ansN);
-		cudaMalloc(&deviceKeyStr, strN);
+		//cudaMalloc(&deviceKeyStr, strN);
 		cudaMemcpy(devicePrevData, prev_data + src_begin, srcN, cudaMemcpyHostToDevice);
 		cudaMemcpy(deviceCurrData, curr_data + src_begin, srcN, cudaMemcpyHostToDevice);
 		cudaMemcpy(deviceNextData, next_data + src_begin, srcN, cudaMemcpyHostToDevice);
-		cudaMemcpy(deviceKeyStr, key_str + block_begin, strN, cudaMemcpyHostToDevice);
+		//cudaMemcpy(deviceKeyStr, key_str + block_begin, strN, cudaMemcpyHostToDevice);
 
-		mySiftKeypointsKernel << <blocks, threadsPerBlock >> >(devicePrevData, deviceCurrData, deviceNextData, deviceAnswers, deviceKeyStr, curRows, curCols, pix_begin, src_begin, block_begin, keybits);
+		mySiftKeypointsKernel << <blocks, threadsPerBlock >> >(devicePrevData, deviceCurrData, deviceNextData, deviceAnswers, curRows, curCols, pix_begin, src_begin, block_begin, keybits);
 
-		cudaMemcpy(key_str + block_begin, deviceKeyStr, strN, cudaMemcpyDeviceToHost);
+		//cudaMemcpy(key_str + block_begin, deviceKeyStr, strN, cudaMemcpyDeviceToHost);
 		cudaMemcpy(answers + pix_begin, deviceAnswers, ansN, cudaMemcpyDeviceToHost);
 
 		cudaFree(devicePrevData);
 		cudaFree(deviceCurrData);
 		cudaFree(deviceNextData);
 		cudaFree(deviceAnswers);
-		cudaFree(deviceKeyStr);
+		//cudaFree(deviceKeyStr);
 
 		remainder -= pixels;
 	}
+}
+
+/*void cudaMySiftOrMagGen(float* curr_data, float* or_mag, int curRows, int curCols){
+	float* deviceCurrData;
+	float* deviceOrMag;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int datasize = sizeof(float);
+
+	int offset = 0;
+	int remainder = curRows * curCols;
+
+	int pixels = (MEM_CAP) / (3.2 * datasize);
+	//printf("Pixels: %d\n", pixels);
+
+	while (remainder > 0){
+
+		int pix_begin = (curRows * curCols - remainder);
+		int pix_end = min(curRows * curCols - 1, pix_begin + pixels - 1);
+		int pixN = (pix_end - pix_begin + 1) * datasize;
+
+		int src_begin = max(0, pix_begin - curCols - 1);
+		int src_end = min(curRows * curCols - 1, pix_end + curCols + 1);
+		//printf("src_begin: %d, src_end: %d\n", src_begin, src_end);
+		int srcN = (src_end - src_begin + 1) * datasize;
+		int blocks = ((pixN / datasize) + threadsPerBlock - 1) / threadsPerBlock;
+
+		//printf("pixN: %d, srcN: %d\n", pixN, srcN);
+
+		//cudaMalloc(&deviceCurrData, srcN);
+		//cudaMalloc(&deviceOrMag, pixN);
+		//printf("Test: %d\n", curr_data);
+		//cudaMemcpy(deviceCurrData, curr_data + src_begin, srcN, cudaMemcpyHostToDevice);
+
+		//printf("pix_begin: %d, pix_end: %d, pixN: %d, blocks: %d\n", pix_begin, pix_end, pixN, blocks);
+		//printf("Blocks: %d, ThreadsPerBlock: %d\n", blocks, threadsPerBlock);
+
+		//mySiftOrMagKernel << <blocks, threadsPerBlock >> >(NULL, NULL, curRows, curCols, pix_begin, pix_end, src_begin, src_end);
+		testKernel << <blocks, threadsPerBlock >> >(NULL);
+		
+		//printf("  Threads\n");
+		//cudaMemcpy(or_mag + (pix_begin * 2), deviceOrMag, pixN, cudaMemcpyDeviceToHost);
+		//printf("  Threads2\n");
+
+		//cudaFree(deviceOrMag);
+		//cudaFree(deviceCurrData);
+
+		offset += pixels;
+		remainder -= pixels;
+	}
+}*/
+
+void cudaTest(int curRows, int curCols){
+	//cudaDeviceSynchronize();
+	//float* deviceCurrData;
+	//float* deviceOrMag;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int datasize = sizeof(float);
+
+	int remainder = curRows * curCols;
+
+	int pixels = MEM_CAP / (3.5 * datasize);
+	int blocks = 1;
+	testKernel << <20, 256 >> >();
+	cudaDeviceSynchronize();
+	cudaError_t err = cudaGetLastError();
+	if (cudaSuccess != err){
+		printf("Fish %s\n", cudaGetErrorString(err));
+	}
+	
+
+	remainder -= pixels;
 }
 
 void cudaMySiftOrMagGen(float* curr_data, float* or_mag, int curRows, int curCols){
@@ -960,19 +1033,23 @@ void cudaMySiftOrMagGen(float* curr_data, float* or_mag, int curRows, int curCol
 
 		int pix_begin = (curRows * curCols - remainder);
 		int pix_end = min(curRows * curCols - 1, pix_begin + pixels - 1);
-		int pixN = (pix_end - pix_begin) * 2 * datasize;
+		int pixN = (pix_end - pix_begin + 1) * 2 * datasize;
 
 		int src_begin = max(0, pix_begin - curCols - 1);
 		int src_end = min(curRows * curCols - 1, pix_end + curCols + 1);
-		int srcN = src_end - src_begin * datasize;
+		int srcN = (src_end - src_begin + 1) * datasize;
 		int blocks = ((pixN / (2 * datasize)) + threadsPerBlock - 1) / threadsPerBlock;
 
 		cudaMalloc(&deviceCurrData, srcN);
 		cudaMalloc(&deviceOrMag, pixN);
 		cudaMemcpy(deviceCurrData, curr_data + src_begin, srcN, cudaMemcpyHostToDevice);
 
-		mySiftOrMagKernel << <blocks, threadsPerBlock >> >(deviceCurrData, deviceOrMag, curRows, curCols, pix_begin, pix_end, src_begin, src_end, offset);
+		mySiftOrMagKernel << <blocks, threadsPerBlock >> >(deviceCurrData, deviceOrMag, curRows, curCols, pix_begin, pix_end, src_begin, src_end);
+		//printf("  Fish\n");
 		cudaMemcpy(or_mag + pix_begin * 2, deviceOrMag, pixN, cudaMemcpyDeviceToHost);
+
+		cudaFree(deviceCurrData);
+		cudaFree(deviceOrMag);
 
 		offset += pixels;
 		remainder -= pixels;

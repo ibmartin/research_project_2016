@@ -13,6 +13,7 @@
 #include "device_launch_parameters.h"
 
 #define M_PI				3.14159265358979323846  /* pi */
+#define REGION_SIZE			8
 
 //__global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset);
 
@@ -30,6 +31,7 @@ __global__ void frgb2GrayKernel(float* dest_data, unsigned char* src_data, int r
 
 	//src_data += 3 * offset;
 	dest_data[idx] = 0.299 * src_data[3 * idx + 2] + 0.587 * src_data[3 * idx + 1] + 0.114 * src_data[3 * idx];
+	return;
 }
 
 __global__ void reverseKernel(unsigned char* dest_data, unsigned char* src_data, int srcN, int chunkRows, int offset){
@@ -74,7 +76,7 @@ __global__ void fdirectResizeKernel(float* dest_data, float* src_data, int srcRo
 
 	int src_local = (sRow * srcCols + sCol) - src_begin;
 	dest_data[idx] = src_data[src_local];
-
+	return;
 	//if ((pix_local) / destCols == 11 && (pix_local) % destCols <= 307){
 	//	printf("    pix_local: %d, %d;  sRow: %d, sCol: %d\n", (pix_local / destCols), (pix_local % destCols), sRow, sCol);
 	//	dest_data[idx] = 255.0;
@@ -114,6 +116,7 @@ __global__ void linearResizeKernel(unsigned char* dest_data, unsigned char* src_
 			dest_data[idx] = val;
 		}
 	}
+	return;
 }
 
 __global__ void gaussianFilterKernel(unsigned char* dest_data, unsigned char* src_data, double* gKernel, int filter_size, int rows, int cols, int chunkRows, int offset){
@@ -168,6 +171,7 @@ __global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double*
 		}
 	}
 	dest_data[idx] = tmp;
+	return;
 	//}
 	/*else{
 	dest_data[idx] = src_data[idx];
@@ -320,10 +324,16 @@ __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_in
 
 __global__ void mySiftDOGKernel(float* curr_data, float* next_data, float* dog_data){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
-	dog_data[idx] = 128.0 + (next_data[idx] - curr_data[idx]);
+	dog_data[idx] = 0.0 + (next_data[idx] - curr_data[idx]);
+	return;
 }
 
-__global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float* next_data, char* answers, unsigned int* key_str, int curRows, int curCols, int pix_begin, int src_begin, int block_begin, int keybits){
+__global__ void testKernel(){
+	//int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	return;
+}
+
+__global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float* next_data, char* answers, int curRows, int curCols, int pix_begin, int src_begin, int block_begin, int keybits){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	int pix_loc = pix_begin + idx;
 	int src_loc = pix_loc - src_begin;
@@ -356,18 +366,23 @@ __global__ void mySiftKeypointsKernel(float* prev_data, float* curr_data, float*
 		}
 
 		if (abs(counter) == 26){
-			//atomicOr(key_str + block_slot, match);
 			answers[idx] = 1;
+			return;
 		}
 		else{
 			answers[idx] = 0;
+			return;
 		}
 
+	}
+	else{
+		answers[idx] = 0;
+		return;
 	}
 
 }
 
-__global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, int curCols, int pix_begin, int pix_end, int src_begin, int src_end, int offset){
+__global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, int curCols, int pix_begin, int pix_end, int src_begin, int src_end){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 	int pix_local = idx + pix_begin;
 
@@ -384,9 +399,12 @@ __global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, 
 	if (j == 0) mj = 0;
 	else if (j == curCols - 1) pj = 0;
 
-	float val = pow(curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)], 2) + pow(curr_data[src_local + pj] - curr_data[src_local - mj], 2);
-	val = sqrt(val);
-	or_mag[2 * idx + 1] = val;
+	//float val = pow(curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)], 2) + pow(curr_data[src_local + pj] - curr_data[src_local - mj], 2);
+	float val = 0;
+	val += (curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)]) * (curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)]);
+	val += (curr_data[src_local + pj] - curr_data[src_local - mj]) * (curr_data[src_local + pj] - curr_data[src_local - mj]);
+	//val = sqrt(val);
+	or_mag[2 * idx + 1] = sqrt(val);
 
 	float val1 = curr_data[src_local + (pi * curCols)] - curr_data[src_local - (mi * curCols)];
 	float val2 = curr_data[src_local + pj] - curr_data[src_local - mj];
@@ -399,6 +417,7 @@ __global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, 
 	}
 
 	or_mag[2 * idx] = val;
+	
 }
 
 #endif

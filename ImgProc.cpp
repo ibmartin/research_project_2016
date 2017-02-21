@@ -973,7 +973,7 @@ namespace img_proc{
 						//printf("Next: %f, Curr: %f\n", next_data[idx], curr_data[idx]);
 						//printf("Diff: %f\n", next_data[idx] - curr_data[idx]);
 
-						float val = 128.0 + (next_data[idx] - curr_data[idx]);// + 127;// Data is stored as gray to allow for presentable data.  Adding 127 reduces risk of wrap-around error (range is 0 - 255).
+						float val = 0.0 + (next_data[idx] - curr_data[idx]);// + 127;// Data is stored as gray to allow for presentable data.  Adding 127 reduces risk of wrap-around error (range is 0 - 255).
 						
 						dog_data[idx] = val;
 						//dog_data[idx + 1] = val;
@@ -1156,9 +1156,9 @@ namespace img_proc{
 
 		//printf("Keys Size: %d\n", key_count);
 		printf("Keys Size: %d\n", keys.size());
-		mySiftWriteKeyFile(keys);
+		//mySiftWriteKeyFile(keys);
 
-		return dog_oct[0][0];
+		//return dog_oct[0][0];
 
 		//printf("Mark 1\n");
 		//printf("Keypoints: %d\n", key_count);
@@ -1169,6 +1169,25 @@ namespace img_proc{
 
 		//Edge Responses goes here
 		mySiftEdgeResponses(dog_oct, keys);
+
+		int unfiltered = 0;
+		std::vector<keypoint>::iterator iter;
+		for (iter = keys.begin(); iter != keys.end();){
+			if ((*iter).filtered){
+				iter = keys.erase(iter);
+			}
+			else{
+				unfiltered++;
+				iter++;
+			}
+		}
+
+		key_count = keys.size();
+
+		printf("Unfiltered: %d\n", unfiltered);
+		mySiftWriteKeyFile(keys);
+
+		return dog_oct[0][0];
 
 		//Pre-compute orientation and magnitude
 		std::vector < std::vector<float*> > or_mag_oct;
@@ -1306,7 +1325,7 @@ namespace img_proc{
 		mySiftDescriptors(keys, blur_oct, or_mag_oct);
 		
 
-		int unfiltered = 0;
+		//int unfiltered = 0;
 		/*key_index = 0;
 		//	Optional print out of all keypoint data
 		while (key_index < key_count){
@@ -1322,7 +1341,7 @@ namespace img_proc{
 			key_index++;
 		}*/
 
-		std::vector<keypoint>::iterator iter;
+		/*std::vector<keypoint>::iterator iter;
 		for (iter = keys.begin(); iter != keys.end(); ){
 			if ((*iter).filtered){
 				iter = keys.erase(iter);
@@ -1335,7 +1354,7 @@ namespace img_proc{
 
 		key_count = keys.size();
 
-		printf("Unfiltered: %d\n", unfiltered);
+		printf("Unfiltered: %d\n", unfiltered);*/
 		//printf("Distance: %d\n", std::distance(keys.begin(),keys.end()));
 
 		//mySiftWriteKeyFile(keys);
@@ -1458,7 +1477,7 @@ namespace img_proc{
 
 			//printf("Point %d: dx: %f; dy: %f; ds: %f\n", key_index, tptr[0], tptr[1], tptr[2]);
 
-			cv::Mat neg_soDer = soDer;
+			cv::Mat neg_soDer = soDer * -1;
 
 			float det = 0;	//Find Det(soDer)
 			det += soDer.at<float>(0, 0) * ((soDer.at<float>(1, 1) * soDer.at<float>(2, 2)) - (soDer.at<float>(2, 1) * soDer.at<float>(1, 2)));
@@ -1471,11 +1490,11 @@ namespace img_proc{
 				continue;
 			}
 
-			for (int a = 0; a < 3; a++){	// Transpose
-				for (int b = 0; b < 3; b++){
-					neg_soDer.at<float>(a, b) = soDer.at<float>(b, a);
-				}
-			}
+			//for (int a = 0; a < 3; a++){	// Transpose
+			//	for (int b = 0; b < 3; b++){
+			//		neg_soDer.at<float>(a, b) = soDer.at<float>(b, a);
+			//	}
+			//}
 			float vals[4];
 			cv::Mat ems = cv::Mat::zeros(3, 3, CV_32F);
 			for (int a = 0; a < 3; a++){
@@ -1492,17 +1511,16 @@ namespace img_proc{
 					ems.at<float>(a, b) = ((vals[0] * vals[3]) - (vals[1] * vals[2])) * pow(-1, 3 * a + b) / det;
 				}
 			}
+			cv::Mat emt = cv::Mat::zeros(3, 3, CV_32F);
+			for (int a = 0; a < 3; a++){	// Transpose
+				for (int b = 0; b < 3; b++){
+					emt.at<float>(a, b) = ems.at<float>(b, a);
+				}
+			}
 
-			neg_soDer *= -1;
+			cv::Mat extreme = emt * foDer;
 
-			cv::Mat extremum(3, 1, CV_32F);
-
-			foDer.t();
-			extremum = neg_soDer * foDer;
-
-			//printf("Setup %d\n", key_index);
-
-			float* exptr = (float*)extremum.datastart;
+			float* exptr = (float*)extreme.datastart;
 			float mult = 1.0;
 
 			//printf("Ex %d: %f, %f, %f\n", key_index, exptr[0], exptr[1], exptr[2]);
@@ -1516,26 +1534,14 @@ namespace img_proc{
 			for (int i = 0; i < 3; i++){
 				ex_val += tptr[i] * exptr[i];
 			}
-			ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx,key_now.idy);
 			ex_val *= 0.5;
+			ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx,key_now.idy);
 			if (abs(ex_val) < 0.03){
 				//printf("ex_val: %f\n", abs(ex_val));	//Fix Later
-				//key_now.filtered = true;
-				//key_index++;
-				//continue;
-			}
-
-			/*float ex_val = foDer.dot(extremum);
-			//float ex_val = transpose * extremum;
-			ex_val *= 0.5;
-			ex_val += dog_oct[key_now.oct][(int)key_now.index].at<cv::Vec3b>(key_now.idy, key_now.idx)[0];
-			printf("Ex %d: %f\n", key_index, ex_val);
-			if (abs(ex_val) < 7.65){
 				key_now.filtered = true;
 				key_index++;
 				continue;
-			}*/
-			//printf("Transpose %d\n", key_index);
+			}
 
 			float h_trace = dxx + dyy;
 			float h_det = dxx * dyy - pow(dxy, 2);
