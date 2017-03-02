@@ -13,7 +13,7 @@
 #include "device_launch_parameters.h"
 
 #define M_PI				3.14159265358979323846  /* pi */
-#define REGION_SIZE			8
+#define REGION_SIZE			4
 
 //__global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset);
 

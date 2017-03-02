@@ -29,6 +29,10 @@ public:
 	}
 };
 
+float eucDistance(float x1, float y1, float x2, float y2){
+	return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
+}
+
 Mat rgb2Gray(Mat image){
 	Mat out = Mat(image.rows, image.cols, CV_8UC1);
 
@@ -424,6 +428,90 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 
 }
 
+float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, float r_y){
+
+	return 0.0;
+}
+
+void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>>& or_mag_oct, int srcRows, int srcCols){
+	int region = REGION_SIZE;
+
+	int W = 2 * region + 1;
+	double* gKernel = new double[W * W];
+	createFilter(gKernel, 1.5, region);
+
+	int key_count = keys.size();
+
+	//int key_index = 0;
+
+	for (int key_index = 0; key_index < key_count; key_index++){
+		keypoint& key_now = keys[key_index];
+		if (key_now.filtered == true) continue;
+
+		int idx = key_now.idx, idy = key_now.idy, oct = key_now.oct, kindex = (int)key_now.index;
+		float scale = key_now.scale;
+
+		int curRows = srcRows / exp2f(oct), curCols = srcCols / exp2f(oct);
+		float* or_mag = or_mag_oct[oct][kindex];
+
+		if (idx < region || idx > curRows - region - 1 || idy < region || idy > curCols - region - 1){
+			key_now.filtered = true;
+			continue;
+		}
+
+		float histo[36] = { 0 };
+		for (int i = -region; i < region; i++){
+			for (int j = -region; j < region; j++){
+				if (eucDistance(idx,idy,idx + i, idy + j) > region) continue;
+
+				int id_or_mag = 2 * ((idx + i) * curCols + (idy + j));
+				int id_gKernel = (i + region) * W + (j + region);
+
+				int bin = (int)((180.0 / (M_PI * 10.0)) * or_mag[id_or_mag]);
+				histo[bin] += gKernel[id_gKernel] * or_mag[id_or_mag + 1];
+			}
+		}
+
+		int max_bin = 0;
+		float max_hist = 0.0;
+
+		for (int bin = 0; bin < 36; bin++){
+			if (histo[bin] > max_hist){
+				max_bin = bin;
+				max_hist = histo[bin];
+			}
+		}
+
+		float peaks[36] = { 0 };
+
+		for (int i = 0; i < 36; i++){
+			int left = i - 1, right = i + 1;
+			if (i == 0){
+				left = 35;
+			}
+			else if (i == 35){
+				right = 0;
+			}
+
+			if (i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
+				peaks[i] = histo[i];
+
+				//float orientation = mySiftVertParabola(left * 10 + 5, histo[left], i * 10 + 5, histo[i], right * 10 + 5, histo[right]);
+				float orientation = i * ((M_PI * 10.0) / 180.0);
+				keypoint newKey(idx, idy, oct, orientation, kindex);
+				keys.push_back(newKey);
+			}
+			else{
+				peaks[i] = -1;
+			}
+		}
+
+		key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
+	}
+
+	delete[] gKernel;
+}
+
 Mat mySift(Mat original){
 	//Mat out;
 
@@ -451,7 +539,7 @@ Mat mySift(Mat original){
 
 	uchar scales = 3;
 	uchar octaves = 4;
-	int region = 4;
+	int region = REGION_SIZE;
 	int srcRows = image.rows;
 	int srcCols = image.cols;
 
@@ -611,6 +699,9 @@ Mat mySift(Mat original){
 	cv::Mat output;
 
 	cudaDeviceSynchronize();
+
+	mySiftOrAssign(keys, or_mag_oct, srcRows, srcCols);
+
 	return dog_oct[0][0];
 
 	if (full_dog == 1){
