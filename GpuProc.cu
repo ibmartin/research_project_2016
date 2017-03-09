@@ -512,6 +512,121 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 	delete[] gKernel;
 }
 
+void mySiftNormVec(std::vector<float>& vec){
+	float length = 0;
+	for (int i = 0; i < vec.size(); i++){
+		length += vec[i];
+	}
+	if (length == 0) return;
+	for (int i = 0; i < vec.size(); i++){
+		vec[i] = vec[i] / length;
+	}
+}
+
+std::vector<float> mySiftVectorThreshold(std::vector<float>& vec){
+	mySiftNormVec(vec);
+	std::vector<float> res;
+	bool threshold = false;
+	for (float& elem : vec){
+		if (elem <= 0.2)
+			res.push_back(elem);
+		else{
+			res.push_back(0.2);
+			threshold = true;
+		}
+	}
+	if (threshold)
+		mySiftNormVec(res);
+	return res;
+}
+
+void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct){
+	int region = 8;
+	int key_count = keys.size();
+
+	for (int key_index = 0; key_index < key_count; key_index++){
+
+		keypoint& key_now = keys[key_index];
+		if (key_now.filtered == true){
+			continue;
+		}
+
+		cv::Mat& current = blur_oct[key_now.oct][key_now.index];
+		float* cur_or_mag = or_mag_oct[key_now.oct][key_now.index];
+		int curRows = current.rows, curCols = current.cols;
+
+		if (key_now.idx < region || key_now.idx >= current.rows - region ||
+			key_now.idy < region || key_now.idy >= current.cols - region ||
+			key_now.filtered == true){
+
+			key_now.filtered = true;
+			continue;
+		}
+
+		//printf("Fish 0 %d,%d\n", key_now.idx, key_now.idy);
+		//printf("Angle: %f\n", key_now.angle);
+
+		int or_mag_size = 2 * curRows * curCols;
+		int W = 2 * region + 1;
+		float* orientations = new float[W * W];
+		float* magnitudes = new float[W * W];
+		double* gKernel = new double[W * W];
+		createFilter(gKernel, 8.0, region);
+		cv::Mat gauss_cur = current(cv::Rect(key_now.idy - region, key_now.idx - region, W, W));
+
+		//printf("Fish 1 %d,%d\n", key_now.idx, key_now.idy);
+
+		for (int i = 0; i < W; i++){
+			for (int j = 0; j < W; j++){
+				int om_i = key_now.idx - region + i;
+				int om_j = key_now.idy - region + j;
+				orientations[i * W + j] = cur_or_mag[2 * (om_i * curCols + om_j)] + key_now.angle;
+				if (orientations[i * W + j] > 2 * M_PI){
+					orientations[i * W + j] -= 2 * M_PI;
+				}
+				else if (orientations[i * W + j] < 0){
+					orientations[i * W + j] += 2 * M_PI;
+				}
+				magnitudes[i * W + j] = cur_or_mag[2 * (om_i * curCols + om_j) + 1] * gKernel[i * W + j];
+			}
+		}
+
+		delete[] gKernel;
+
+		//printf("Fish 2 %d,%d\n", key_now.idx, key_now.idy);
+		std::vector<float> descriptors;
+
+		for (int x = 0; x < W - 1; x += 4){
+			for (int y = 0; y < W - 1; y += 4){
+
+				std::vector<float> bins(8, 0);
+				for (int i = x; i < x + 4; i++){
+					for (int j = y; j < y + 4; j++){
+
+						//printf("3 %d,%d\n", i, j);
+						float sum = magnitudes[i * W + j] * gauss_cur.at<float>(i, j);
+						int bin = (orientations[i * W + j] * (180 / M_PI)) / 45.0;
+						//printf("Bin: %d\n", bin);
+						//getchar();
+						bins[bin] += sum;
+					}
+				}
+				//printf("Fish 4 %d,%d\n", key_now.idx, key_now.idy);
+				mySiftVectorThreshold(bins);
+				//printf("Fish 5\n");
+				descriptors.insert(descriptors.end(), bins.begin(), bins.end());
+				//printf("Fish 6\n");
+			}
+		}
+
+		key_now.descriptors = descriptors;
+		delete[] orientations;
+		delete[] magnitudes;
+		//printf("Fish 7\n");
+	}
+}
+
+
 Mat mySift(Mat original){
 	//Mat out;
 
@@ -691,10 +806,10 @@ Mat mySift(Mat original){
 		}
 	}
 
-	key_count = keys.size();
+	//key_count = keys.size();
 
-	printf("Unfiltered: %d\n", unfiltered);
-	mySiftWriteKeyFile(keys);
+	//printf("Unfiltered: %d\n", unfiltered);
+	//mySiftWriteKeyFile(keys);
 
 	cv::Mat output;
 
@@ -702,7 +817,21 @@ Mat mySift(Mat original){
 
 	mySiftOrAssign(keys, or_mag_oct, srcRows, srcCols);
 
-	return dog_oct[0][0];
+	mySiftDescriptors(keys, blur_oct, or_mag_oct);
+
+	key_count = keys.size();
+
+	printf("Unfiltered: %d\n", key_count);
+	//mySiftWriteKeyFile(keys);
+
+	for (int oct = 0; oct < octaves; oct++){
+		for (int step = 0; step < s; step++){
+			delete[] or_mag_oct[oct][step];
+		}
+	}
+
+	//return dog_oct[0][0];
+	return original;
 
 	if (full_dog == 1){
 		int destRows = 4 * original.rows, destCols = (s) * (2 * original.cols);

@@ -1185,9 +1185,9 @@ namespace img_proc{
 		key_count = keys.size();
 
 		printf("Unfiltered: %d\n", unfiltered);
-		mySiftWriteKeyFile(keys);
+		//mySiftWriteKeyFile(keys);
 
-		return dog_oct[0][0];
+		//return dog_oct[0][0];
 
 		//Pre-compute orientation and magnitude
 		std::vector < std::vector<float*> > or_mag_oct;
@@ -1323,7 +1323,15 @@ namespace img_proc{
 		delete[] gKernel;
 
 		mySiftDescriptors(keys, blur_oct, or_mag_oct);
+
+		for (int oct = 0; oct < octaves; oct++){
+			for (int step = 0; step < s; step++){
+				delete[] or_mag_oct[oct][step];
+			}
+		}
 		
+		//return dog_oct[0][0];
+		return original;
 
 		//int unfiltered = 0;
 		/*key_index = 0;
