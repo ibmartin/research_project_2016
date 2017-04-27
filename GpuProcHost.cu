@@ -11,13 +11,23 @@
 #define M_PI				3.14159265358979323846  /* pi */
 #define IMG_CHUNK			3110400	/* (1920 x 1080 x 3) / 2 */
 #define THREADS_PER_BLOCK	256
+//#define MEM_CAP				131072	// (2 ^ 17)
 #define MEM_CAP				65536 //64 KB as a power of 2 (2 ^ 16)
 //#define MEM_CAP				32768 //32 KB as a power of 2 (2 ^ 15)
 //#define MEM_CAP				16384 //16 KB as a power of 2 (2 ^ 14)
 
 #define CUDA_CALL(x) {cudaError_t cuda_error__ = (x); if (cuda_error__) printf("CUDA error: " #x " returned \"%s\"\n", cudaGetErrorString(cuda_error__));}
 
+void cudaLagSetup(){
+	get_nvtAttrib("Cuda Setup", 0xFFFFFFFF);
+	unsigned char* nothing;
+	cudaMalloc(&nothing, sizeof(unsigned char));
+	cudaFree(nothing);
+	nvtxRangePop();
+}
+
 void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
+	get_nvtAttrib("rgb2Gray CPU", 0xFF222222);
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
 	int threadsPerBlock = THREADS_PER_BLOCK;
@@ -51,9 +61,11 @@ void cudaRgb2Gray(unsigned char* input, unsigned char* output, int srcRows, int 
 	}
 
 	cudaFree(deviceSrcData);
+	nvtxRangePop();
 }
 
 void cudafRgb2Gray(unsigned char* input, float* output, int srcRows, int srcCols){
+	get_nvtAttrib("Setup", 0xFF0000FF);
 	unsigned char* deviceSrcData;
 	float* deviceDestData;
 	int threadsPerBlock = THREADS_PER_BLOCK;
@@ -75,8 +87,12 @@ void cudafRgb2Gray(unsigned char* input, float* output, int srcRows, int srcCols
 	}
 	//int rounds = ceil(srcRows / (double)chunkRows);
 	//int rounds = steps;
+	nvtxRangePop();//Setup
 
+	get_nvtAttrib("K Blocks " + std::to_string(rounds), 0xFF008800);
 	for (int step = 0; step < rounds; step++){
+		get_nvtAttrib("Pre-K", 0xFFFF0000);
+		get_nvtAttrib("Vars", 0xFF880000);
 		int remainder = fmin(chunk_size, (srcRows * srcCols) - (step * chunk_size) );
 		int srcN = remainder * datasize1;
 		int destN = remainder * datasize2;
@@ -84,17 +100,32 @@ void cudafRgb2Gray(unsigned char* input, float* output, int srcRows, int srcCols
 			break;
 
 		blocks = ((destN / datasize2) + threadsPerBlock - 1) / threadsPerBlock;
+		nvtxRangePop();
 
+		get_nvtAttrib("Malloc", 0xFF880000);
 		cudaMalloc(&deviceSrcData, srcN);
-		cudaMemcpy(deviceSrcData, input + (step * chunk_size * 3), srcN, cudaMemcpyHostToDevice);
-
 		cudaMalloc(&deviceDestData, destN);
+		nvtxRangePop();
+
+		get_nvtAttrib("Memcpy", 0xFF880000);
+		cudaMemcpy(deviceSrcData, input + (step * chunk_size * 3), srcN, cudaMemcpyHostToDevice);
+		nvtxRangePop();
+		
+		nvtxRangePop();
+
+		get_nvtAttrib("Kern", 0xFF00FF00);
 		frgb2GrayKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, srcRows, srcCols, chunkRows, 0);
+		cudaDeviceSynchronize();
+		nvtxRangePop();
+
+		get_nvtAttrib("Post-K", 0xFF0000FF);
 		cudaMemcpy(output + offset, deviceDestData, destN, cudaMemcpyDeviceToHost);
 		cudaFree(deviceDestData);
 
 		offset += remainder;
+		nvtxRangePop();
 	}
+	nvtxRangePop();
 }
 
 void cudaReverse(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
@@ -366,6 +397,7 @@ void cudaGaussianFilter(unsigned char* input, unsigned char* output, double* gKe
 }
 
 void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRows, int srcCols){
+	get_nvtAttrib("Setup", 0xFF0000FF);
 	float* deviceSrcData;
 	float* deviceDestData;
 	double* deviceFilter;
@@ -388,9 +420,11 @@ void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 	int rounds = ceil(srcRows / (double)chunkRows);
 
 	int offset = 0;
+	nvtxRangePop();//Setup
 	//for (int step = 0; step < rounds; step++){
+	get_nvtAttrib("K Blocks " + std::to_string(rounds), 0xFF008800);
 	while (remainder > 0){
-
+		get_nvtAttrib("Pre-K", 0xFFFF0000);
 		int pix_begin = (srcRows * srcCols) - remainder;
 		int pix_end = min(srcRows * srcCols - 1, pix_begin + pixels - 1);
 
@@ -406,21 +440,37 @@ void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 		int src_end = min((pix_end + FILTER_SIZE) + (FILTER_SIZE * srcCols), srcRows * srcCols - 1);
 		int srcN = (src_end - src_begin + 1) * datasize;
 
+		get_nvtAttrib("Malloc", 0xFFFF0000);
 		cudaMalloc(&deviceDestData, destN);
 		cudaMalloc(&deviceSrcData, srcN);
+		nvtxRangePop();//Malloc
 
+		get_nvtAttrib("Memcpy", 0xFFFF0000);
 		cudaMemcpy(deviceSrcData, input + src_begin, srcN, cudaMemcpyHostToDevice);
+		nvtxRangePop();//Memcpy
+		
+		nvtxRangePop();//Pre-K
 
+		get_nvtAttrib("Kern", 0xFF00FF00);
 		fGaussianFilterKernel << <blocks, threadsPerBlock >> > (deviceDestData, deviceSrcData, deviceFilter, FILTER_SIZE, srcRows, srcCols, src_begin, pix_begin);
+		cudaDeviceSynchronize();
+		nvtxRangePop();//Kern
 
+		get_nvtAttrib("Post-K", 0xFF0000FF);
+		get_nvtAttrib("Memcpy", 0xFF0000FF);
 		cudaMemcpy(output + pix_begin, deviceDestData, destN, cudaMemcpyDeviceToHost);
+		nvtxRangePop();//Memcpy
+
+		get_nvtAttrib("cudaFree", 0xFF0000FF);
 		cudaFree(deviceDestData);
 		cudaFree(deviceSrcData);
+		nvtxRangePop();//cudaFree
 
 		offset += destN;
 		remainder -= pixels;
+		nvtxRangePop();//Post-K
 	}
-
+	nvtxRangePop();//K Blocks
 	cudaFree(deviceFilter);
 	//cudaFree(deviceSrcData);
 

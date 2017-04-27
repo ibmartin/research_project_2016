@@ -27,6 +27,9 @@ public:
 		angle = _angle;
 		index = _index;
 	}
+	keypoint(){
+
+	}
 };
 
 float eucDistance(float x1, float y1, float x2, float y2){
@@ -34,71 +37,89 @@ float eucDistance(float x1, float y1, float x2, float y2){
 }
 
 Mat rgb2Gray(Mat image){
+	get_nvtAttrib("rgb2Gray GPU", 0xFF880000);
+
+	get_nvtAttrib("Setup", 0xFF222222);
 	Mat out = Mat(image.rows, image.cols, CV_8UC1);
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
+	nvtxRangePop();
+
 	cudaRgb2Gray(input, output, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat frgb2Gray(Mat image){
+	get_nvtAttrib("frgb2Gray GPU", 0xFF880000);
 	Mat out = Mat(image.rows, image.cols, CV_32FC1);
 
 	unsigned char* input = (unsigned char*)image.datastart;
 	float* output = (float*)out.datastart;
 	cudafRgb2Gray(input, output, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat reverse(Mat image){
+	get_nvtAttrib("frgb2Gray GPU", 0xFF880000);
 	Mat out = Mat(image.rows, image.cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaReverse(input, output, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat gammaCorrection(Mat image, double gamma){
+	get_nvtAttrib("gammaCorrection GPU", 0xFF880000);
 	Mat out = Mat(image.rows, image.cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaGammaCorrection(input, output, gamma, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat directResize(Mat image, int rows, int cols){
+	get_nvtAttrib("directResize GPU", 0xFF880000);
 	Mat out = Mat(rows, cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaDirectResize(input, output, image.rows, image.cols, rows, cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat fdirectResize(Mat image, int rows, int cols){
+	get_nvtAttrib("fdirectResize GPU", 0xFF880000);
 	Mat out = Mat::zeros(rows, cols, CV_32FC1);
 	float* input = (float*)image.datastart;
 	float* output = (float*)out.datastart;
 	cudafDirectResize(input, output, image.rows, image.cols, rows, cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat linearResize(Mat image, int rows, int cols){
+	get_nvtAttrib("linearResize GPU", 0xFF880000);
 	Mat out = Mat(rows, cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaLinearResize(input, output, image.rows, image.cols, rows, cols);
 
+	nvtxRangePop();
 	return out;
 }
 
@@ -125,6 +146,7 @@ Mat linearResize(Mat image, int rows, int cols){
 
 void createFilter(double* gKernel, double inputSigma, int filter_size){
 	//standard deviation to 1.0
+	get_nvtAttrib("createFilter GPU", 0xFF880000);
 	double sigma = inputSigma;
 	double r, s = 2.0 * sigma * sigma;
 	int W = 2 * filter_size + 1;
@@ -150,9 +172,12 @@ void createFilter(double* gKernel, double inputSigma, int filter_size){
 			gKernel[(i * W) + j] /= sum;
 		}
 	}
+
+	nvtxRangePop();
 }
 
 Mat gaussianFilter(Mat image, double sigma){
+	get_nvtAttrib("gaussianFilter GPU", 0xFF880000);
 	int W = 2 * FILTER_SIZE + 1;
 	double* gKernel = new double[W * W];
 	createFilter(gKernel, sigma, FILTER_SIZE);
@@ -164,11 +189,13 @@ Mat gaussianFilter(Mat image, double sigma){
 
 	//delete[] gKernel;
 
+	nvtxRangePop();
 	return out;
 	//return image;
 }
 
 Mat fGaussianFilter(Mat image, double sigma){
+	get_nvtAttrib("fGaussianFilter GPU", 0xFF880000);
 	int W = 2 * FILTER_SIZE + 1;
 	double* gKernel = new double[W * W];
 	createFilter(gKernel, sigma, FILTER_SIZE);
@@ -178,22 +205,26 @@ Mat fGaussianFilter(Mat image, double sigma){
 	float* output = (float*)out.datastart;
 	cudafGaussianFilter(input, output, gKernel, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 
 }
 
 Mat sobelFilter(Mat image){
+	get_nvtAttrib("sobelFilter GPU", 0xFF880000);
 	Mat out(image.rows, image.cols, image.type());
 	//Mat temp(image.rows, image.cols, image.type());
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaSobelFilter(input, output, image.rows, image.cols);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat kMeans(Mat image, int k_means){
-	srand(6000);
+	get_nvtAttrib("kMeans GPU", 0xFF880000);
+	srand(2000);
 	if (k_means > 256){
 		printf("Error: Max number of groups exceeded (256)\n");
 		exit(-1);
@@ -203,10 +234,12 @@ Mat kMeans(Mat image, int k_means){
 	uchar* output = (uchar*)out.datastart;
 	cudaKMeans(input, output, image.rows, image.cols, k_means);
 
+	nvtxRangePop();
 	return out;
 }
 
 Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
+	get_nvtAttrib("gaussianPyramid GPU", 0xFF880000);
 	if (scale > 0.5){
 		printf("Error: Scale > 0.5\n");
 		exit(-1);
@@ -252,6 +285,7 @@ Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
 
 	}
 
+	nvtxRangePop();
 	return output;
 }
 
@@ -337,6 +371,7 @@ cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py){
 void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
 	float r = 10;
 	float t = std::pow(r + 1, 2) / r;
+	nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftEdgeResponses", 0xFF0000FF);
 
 	int key_count = keys.size();
 	int key_index = 0;
@@ -426,14 +461,39 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 		key_index++;
 	}
 
+	nvtxRangePop();
+
 }
 
 float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, float r_y){
+	cv::Mat_<float> mat_a = cv::Mat::zeros(3, 3, CV_32F);
+	cv::Mat_<float> mat_b = cv::Mat::zeros(3, 1, CV_32F);
+	//l_x = l_x * ((M_PI * 10.0) / 180.0); p_x = p_x * ((M_PI * 10.0) / 180.0); r_x = r_x * ((M_PI * 10.0) / 180.0);
 
-	return 0.0;
+	mat_a.at<float>(0, 0) = l_x * l_x;
+	mat_a.at<float>(1, 0) = p_x * p_x;
+	mat_a.at<float>(2, 0) = r_x * r_x;
+
+	mat_a.at<float>(0, 1) = l_x;
+	mat_a.at<float>(1, 1) = p_x;
+	mat_a.at<float>(2, 1) = r_x;
+
+	mat_b.at<float>(0, 0) = l_y;
+	mat_b.at<float>(1, 0) = p_y;
+	mat_b.at<float>(2, 0) = r_y;
+
+	//cv::Mat_<float> mat_result = cv::Mat::zeros(3, 1, CV_32F);
+	//cv::solve(mat_a, mat_b, mat_result);
+	cv::Mat mat_result = mat_a.inv() * mat_b;
+
+	//float result = 0.0;
+	printf("Test: %f, %f, %f\n", mat_result.at<float>(0, 0), mat_result.at<float>(1, 0), mat_result.at<float>(2, 0));
+	float result = -mat_result.at<float>(1, 0) / (2.0 * mat_result.at<float>(0, 0));
+	return result;
 }
 
 void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>>& or_mag_oct, int srcRows, int srcCols){
+	get_nvtAttrib("Or Assign", 0xFF888888);
 	int region = REGION_SIZE;
 
 	int W = 2 * region + 1;
@@ -444,8 +504,12 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 
 	//int key_index = 0;
 
+	//keypoint& key_test = keys[4586];
+	//key_test;
+
 	for (int key_index = 0; key_index < key_count; key_index++){
-		keypoint& key_now = keys[key_index];
+		//keypoint& key_now = keys[key_index];
+		keypoint key_now = keys[key_index];
 		if (key_now.filtered == true) continue;
 
 		int idx = key_now.idx, idy = key_now.idy, oct = key_now.oct, kindex = (int)key_now.index;
@@ -455,14 +519,15 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 		float* or_mag = or_mag_oct[oct][kindex];
 
 		if (idx < region || idx > curRows - region - 1 || idy < region || idy > curCols - region - 1){
-			key_now.filtered = true;
+			//key_now.filtered = true;
+			keys[key_index].filtered = true;
 			continue;
 		}
 
 		float histo[36] = { 0 };
 		for (int i = -region; i < region; i++){
 			for (int j = -region; j < region; j++){
-				if (eucDistance(idx,idy,idx + i, idy + j) > region) continue;
+				//if (eucDistance(idx,idy,idx + i, idy + j) > region) continue;
 
 				int id_or_mag = 2 * ((idx + i) * curCols + (idy + j));
 				int id_gKernel = (i + region) * W + (j + region);
@@ -482,7 +547,7 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 			}
 		}
 
-		float peaks[36] = { 0 };
+		//float peaks[36] = { 0 };
 
 		for (int i = 0; i < 36; i++){
 			int left = i - 1, right = i + 1;
@@ -493,8 +558,8 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 				right = 0;
 			}
 
-			if (i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
-				peaks[i] = histo[i];
+			if (max_hist != 0.0 && i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
+				//peaks[i] = histo[i];
 
 				//float orientation = mySiftVertParabola(left * 10 + 5, histo[left], i * 10 + 5, histo[i], right * 10 + 5, histo[right]);
 				float orientation = i * ((M_PI * 10.0) / 180.0);
@@ -502,14 +567,25 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 				keys.push_back(newKey);
 			}
 			else{
-				peaks[i] = -1;
+				//peaks[i] = -1;
 			}
 		}
 
-		key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
+		int max_left = max_bin - 1, max_right = max_bin + 1;
+		if (max_bin == 0) max_left = 35;
+		else if (max_bin == 35) max_right = 0;
+
+		//printf("Fish: left %d, bin %d, right %d\n", max_left, max_bin, max_right);
+		//key_now.angle = mySiftVertParabola(max_left * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], max_right * 10 + 5, histo[max_right]);
+		//printf("Stop: %f\n", key_now.angle);
+		//key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
+		keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+		//delete[] peaks;
 	}
 
+	//getchar();
 	delete[] gKernel;
+	nvtxRangePop();
 }
 
 void mySiftNormVec(std::vector<float>& vec){
@@ -540,11 +616,15 @@ std::vector<float> mySiftVectorThreshold(std::vector<float>& vec){
 	return res;
 }
 
-void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct){
+void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct, int unfiltered){
 	int region = 8;
 	int key_count = keys.size();
+	//nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftDescriptors", 0xFF00FF00);
+	nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftDescriptors [" + std::to_string(key_count) + " ]", 0xFF00FF00);
+	//printf("Key Count: %d\n", key_count);
 
 	for (int key_index = 0; key_index < key_count; key_index++){
+		//printf("Key: %d\n", key_index);
 
 		keypoint& key_now = keys[key_index];
 		if (key_now.filtered == true){
@@ -624,11 +704,29 @@ void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::
 		delete[] magnitudes;
 		//printf("Fish 7\n");
 	}
+	nvtxRangePop();
 }
 
+void mySiftKeyCull(std::vector<keypoint>& keys){
+	get_nvtAttrib("Vector Cull " + std::to_string(keys.size()), 0xFF0000FF);
+	std::vector<keypoint>::iterator wall = keys.begin();
+	std::vector<keypoint>::iterator current = keys.begin();
+	std::vector<keypoint>::iterator back = keys.end();
+
+	while (current != back){
+		if ((*current).filtered == false){
+			std::iter_swap(current, wall);
+			wall++;
+		}
+		current++;
+	}
+	keys.resize(std::distance(keys.begin(), wall));
+	nvtxRangePop();
+}
 
 Mat mySift(Mat original){
 	//Mat out;
+	get_nvtAttrib("mySift GPU", 0xFF880000);
 
 	std::vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
@@ -676,6 +774,7 @@ Mat mySift(Mat original){
 	int gauss_exp = 0;
 
 	for (int oct = 0; oct < octaves; oct++){
+		get_nvtAttrib("Octave " + to_string(oct), 0xFF888888);
 		std::vector<cv::Mat> blur_img;
 		std::vector<cv::Mat> dog_img;
 
@@ -684,6 +783,7 @@ Mat mySift(Mat original){
 		blur_img.push_back(current);
 		gauss_exp += 1;
 
+		get_nvtAttrib("Scale Space", 0xFF000088);
 		for (int step = 1; step < s; step++){
 			cv::Mat next = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
 			cv::Mat dog = cv::Mat::zeros(curRows, curCols, CV_32FC1);
@@ -699,7 +799,9 @@ Mat mySift(Mat original){
 			current = next;
 			gauss_exp++;
 		}
+		nvtxRangePop();
 
+		get_nvtAttrib("Keypoints", 0xFF000088);
 		for (int step = 1; step < s - 2; step++){
 			int temp_exp = gauss_exp - s + (step);
 
@@ -752,6 +854,7 @@ Mat mySift(Mat original){
 			delete[] answers;
 
 		}
+		nvtxRangePop();
 
 		curRows = curRows / 2;
 		curCols = curCols / 2;
@@ -761,7 +864,7 @@ Mat mySift(Mat original){
 		dog_oct.push_back(dog_img);
 		blur_oct.push_back(blur_img);
 		gauss_exp -= 2;
-
+		nvtxRangePop();
 	}
 	cudaDeviceSynchronize();
 
@@ -770,6 +873,7 @@ Mat mySift(Mat original){
 	curRows = srcRows;
 	curCols = srcCols;
 
+	get_nvtAttrib("Or_Mag Calc", 0xFF888888);
 	for (int oct = 0; oct < octaves; oct++){
 		std::vector<float*> or_mag_current;
 		curRows = blur_oct[oct][0].rows;  curCols = blur_oct[oct][0].cols;
@@ -788,8 +892,10 @@ Mat mySift(Mat original){
 		}
 		or_mag_oct.push_back(or_mag_current);
 	}
+	nvtxRangePop();
 
-	printf("Keys: %d\n", keys.size());
+	get_nvtAttrib("Key Culling", 0xFF000088);
+	//printf("Keys: %d\n", keys.size());
 
 	mySiftEdgeResponses(dog_oct, keys);
 
@@ -797,8 +903,8 @@ Mat mySift(Mat original){
 	std::vector<keypoint>::iterator iter;
 	for (iter = keys.begin(); iter != keys.end();){
 		if ((*iter).filtered){
-			iter = keys.erase(iter);
-			//iter++;
+			//iter = keys.erase(iter);
+			iter++;
 		}
 		else{
 			unfiltered++;
@@ -806,22 +912,25 @@ Mat mySift(Mat original){
 		}
 	}
 
-	//key_count = keys.size();
+	mySiftKeyCull(keys);
+	key_count = keys.size();
 
 	//printf("Unfiltered: %d\n", unfiltered);
+	nvtxRangePop();
 	//mySiftWriteKeyFile(keys);
 
 	cv::Mat output;
 
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
 	mySiftOrAssign(keys, or_mag_oct, srcRows, srcCols);
+	//printf("OrAssign Done\n");
 
-	mySiftDescriptors(keys, blur_oct, or_mag_oct);
+	mySiftDescriptors(keys, blur_oct, or_mag_oct, unfiltered);
 
 	key_count = keys.size();
 
-	printf("Unfiltered: %d\n", key_count);
+	//printf("Unfiltered: %d\n", key_count);
 	//mySiftWriteKeyFile(keys);
 
 	for (int oct = 0; oct < octaves; oct++){
@@ -831,6 +940,7 @@ Mat mySift(Mat original){
 	}
 
 	//return dog_oct[0][0];
+	nvtxRangePop();
 	return original;
 
 	if (full_dog == 1){

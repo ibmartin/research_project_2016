@@ -11,6 +11,7 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include "device_launch_parameters.h"
+#include "nvt_events.hpp"
 
 #define M_PI				3.14159265358979323846  /* pi */
 #define REGION_SIZE			4

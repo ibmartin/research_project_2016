@@ -9,28 +9,37 @@ namespace img_proc{
 	//The data type for colors is uchar, which is 1 Byte and ranges 0 to 255
 	//Raw values of image data can be accessed using (uchar*)image.datastart
 
+	bool debug_statements = false;
+
 	//	== cv::Mat rgb2Gray(cv::Mat image) ==
 	//		cv::Mat image: input image
 	//	Takes an RGB image and converts it to grayscale
-	cv::Mat rgb2Gray(cv::Mat image){	
+	cv::Mat rgb2Gray(cv::Mat image){
+		get_nvtAttrib("rgb2Gray CPU", 0xFF880000);
 		int srcRows = image.rows;
 		int srcCols = image.cols;
 
+		//get_nvtAttrib("Setup", 0xFF88888888);
 		cv::Mat output(srcRows, srcCols, CV_8UC1);
 		uchar* src_data = (uchar*)image.datastart;
 		uchar* dest_data = (uchar*)output.datastart;
 		uchar* dest_end = (uchar*)output.dataend;
+		//nvtxRangePop();
 
+		//get_nvtAttrib("Pixels", 0xFF222222);
 		while (dest_data <= dest_end){
 			*(dest_data) = 0.299 * (*(src_data + 2)) + 0.587 * (*(src_data + 1)) + 0.114 * (*(src_data));	//Based on color curves I found representing contribution of each channel to grayscale sensitivity
 			dest_data += 1;
 			src_data += 3;
 		}
+		//nvtxRangePop();
 
+		nvtxRangePop();
 		return output;
 	}
 
 	cv::Mat frgb2Gray(cv::Mat image){
+		get_nvtAttrib("frgb2Gray CPU", 0xFF880000);
 		int srcRows = image.rows;
 		int srcCols = image.cols;
 
@@ -46,6 +55,7 @@ namespace img_proc{
 			dest_data += 1;
 			src_data += 3;
 		}
+		nvtxRangePop();
 		return output;
 	}
 
@@ -105,6 +115,7 @@ namespace img_proc{
 	//		int cols: number of columns for the new image to have
 	//	Resize with no interpolation, just chooses closest pixel
 	cv::Mat directResize(cv::Mat image, int rows, int cols){
+		get_nvtAttrib("directResize CPU", 0xFF880000);
 		cv::Mat output(rows, cols, image.type());
 		uchar* src_data = (uchar*)image.datastart;
 		uchar* dest_data = (uchar*)output.datastart;
@@ -124,6 +135,7 @@ namespace img_proc{
 			}
 		}
 
+		nvtxRangePop();
 		return output;
 	}
 
@@ -133,6 +145,7 @@ namespace img_proc{
 	//		int cols: number of columns for the new image to have
 	//	Resize with no interpolation, just chooses closest pixel
 	cv::Mat fdirectResize(cv::Mat image, int destRows, int destCols){
+		get_nvtAttrib("fdirectResize CPU", 0xFF880000);
 		//cv::Mat output(rows, cols, CV_32FC1);
 		int srcRows = image.rows;
 		int srcCols = image.cols;
@@ -155,6 +168,7 @@ namespace img_proc{
 				dest_data[idx] = src_data[(int)(sRow * srcCols + sCol)];
 			}
 		}
+		nvtxRangePop();
 		return out;
 	}
 
@@ -363,7 +377,7 @@ namespace img_proc{
 
 	cv::Mat fgaussianFilter(cv::Mat image, double sigma){
 		//double gKernel[2 * FILTER_SIZE + 1][2 * FILTER_SIZE + 1];
-
+		get_nvtAttrib("fgaussianFilter CPU", 0xFF880000);
 		int W = 2 * FILTER_SIZE + 1;
 		int center = W / 2;
 		double* gKernel = new double[W * W];
@@ -373,12 +387,16 @@ namespace img_proc{
 		int srcCols = image.cols;
 
 		//cv::Mat output(image.rows, image.cols, image.type());
+		get_nvtAttrib("out Mat", 0xFF008800);
 		cv::Mat output = cv::Mat::zeros(image.rows,image.cols,CV_32FC1);
+		nvtxRangePop();//out Mat
 
 		float* src_data = (float*)image.datastart;
 		float* dest_data = (float*)output.datastart;
 
+		get_nvtAttrib("Work loop main", 0xFFBB0000);
 		for (int i = 0; i < srcRows; i++){
+			get_nvtAttrib("Work loop inner", 0xFFFF0000);
 			for (int j = 0; j < srcCols; j++){
 				float tmp = 0.0;
 				for (int m = 0; m < W; m++){
@@ -397,8 +415,11 @@ namespace img_proc{
 				}
 				dest_data[i * srcCols + j] = tmp;
 			}
+			nvtxRangePop();//Work loop inner
 		}
+		nvtxRangePop();//Work loop main
 
+		nvtxRangePop();//fgaussianFilter CPU
 		return output;
 	}
 
@@ -606,6 +627,7 @@ namespace img_proc{
 	//	This implementation is hard coded to run the most important calculations 200 times, and is pre-seeded at the start of every call.
 
 	cv::Mat kMeans(cv::Mat image, int k_means){
+		get_nvtAttrib("kMeans CPU", 0xFF880000);
 		srand(2000);
 		int srcRows = image.rows;
 		int srcCols = image.cols;
@@ -736,6 +758,7 @@ namespace img_proc{
 		delete[] k_index;
 		delete[] k_count;
 
+		nvtxRangePop();
 		return output;
 	}
 
@@ -865,6 +888,8 @@ namespace img_proc{
 	//	keypoints.  Not yet implemented are keypoint filtering, orientation and magnitude calculations, and keypoint storage or analysis.
 	cv::Mat mySift(cv::Mat original){
 
+		nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySift CPU", 0xFF880000);
+
 		std::vector<int> compression_params;
 		compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 		compression_params.push_back(9);
@@ -936,7 +961,9 @@ namespace img_proc{
 		int gauss_exp = 0;
 
 		//	Main work loop, builds each octave, but also identifies possible keypoints before moving to next octave
+		
 		for (int oct = 0; oct < octaves; oct++){
+			get_nvtAttrib("Octave " + std::to_string(oct), 0xFF888888);
 			std::vector<cv::Mat> blur_img;
 			std::vector<cv::Mat> dog_img;
 
@@ -951,6 +978,7 @@ namespace img_proc{
 			//std::string full_img = debug_Path + img_name + img_num + ftype;
 			//imwrite(full_img, current, compression_params);
 
+			get_nvtAttrib("Scale Space", 0xFF000088);
 			for (int step = 1; step < s; step++){
 				//cv::Mat next = fgaussianFilter(image, k);	//CHANGED	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
 				cv::Mat next = fgaussianFilter(image, pow(k, gauss_exp) * sigma);	//	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
@@ -992,8 +1020,10 @@ namespace img_proc{
 				current = next;
 				gauss_exp++;
 			}
+			nvtxRangePop();
 
 			//	Keypoint calculation.  Refer to SIFT papers for more information
+			get_nvtAttrib("Keypoints", 0xFF000088);
 			for (int step = 1; step < s - 2; step++){
 				int temp_exp = gauss_exp - s + (step);
 				//printf("temp_exp: %d\n", temp_exp);
@@ -1101,6 +1131,7 @@ namespace img_proc{
 					}
 				}
 			}
+			nvtxRangePop();
 
 			int offset = 0;
 			//curRows = srcRows;
@@ -1152,43 +1183,17 @@ namespace img_proc{
 			dog_oct.push_back(dog_img);
 			blur_oct.push_back(blur_img);
 			gauss_exp -= 2;
+			nvtxRangePop();
 		}	//	End of main work loop
+		
 
 		//printf("Keys Size: %d\n", key_count);
-		printf("Keys Size: %d\n", keys.size());
+		
 		//mySiftWriteKeyFile(keys);
 
 		//return dog_oct[0][0];
 
-		//printf("Mark 1\n");
-		//printf("Keypoints: %d\n", key_count);
-		printf("Bogeys: %d\n", bogeys);
-
-		dest_data = (uchar*)output.datastart;
-
-
-		//Edge Responses goes here
-		mySiftEdgeResponses(dog_oct, keys);
-
-		int unfiltered = 0;
-		std::vector<keypoint>::iterator iter;
-		for (iter = keys.begin(); iter != keys.end();){
-			if ((*iter).filtered){
-				iter = keys.erase(iter);
-			}
-			else{
-				unfiltered++;
-				iter++;
-			}
-		}
-
-		key_count = keys.size();
-
-		printf("Unfiltered: %d\n", unfiltered);
-		//mySiftWriteKeyFile(keys);
-
-		//return dog_oct[0][0];
-
+		get_nvtAttrib("Or_Mag calc", 0xFF888888);
 		//Pre-compute orientation and magnitude
 		std::vector < std::vector<float*> > or_mag_oct;
 		curRows = srcRows;
@@ -1247,51 +1252,79 @@ namespace img_proc{
 			curCols = curCols / 2;
 
 		}
+		nvtxRangePop();
+
+		get_nvtAttrib("Key Culling", 0xFF000088);
+		if (debug_statements) printf("Keys Size: %d\n", keys.size());
+
+		dest_data = (uchar*)output.datastart;
+
+
+		//Edge Responses goes here
+		mySiftEdgeResponses(dog_oct, keys);
+
+		int unfiltered = 0;
+		std::vector<keypoint>::iterator iter;
+		for (iter = keys.begin(); iter != keys.end();){
+			if ((*iter).filtered){
+				//iter = keys.erase(iter);
+				iter++;
+			}
+			else{
+				unfiltered++;
+				iter++;
+			}
+		}
+
+		key_count = keys.size();
+
+		if (debug_statements) printf("Unfiltered: %d\n", unfiltered);
+		mySiftKeyCull(keys);
+		nvtxRangePop();
+
+		get_nvtAttrib("Or Assign", 0xFF888888);
+		if(debug_statements) printf("Orientation Assignment\n");
 
 		//Orientation assignment
+		//int region = 4;
+
 		int W = 2 * region + 1;
 		double* gKernel = new double[W * W];
 		createFilter(gKernel, 1.5, region);
 
-		int key_count_new = key_count;
-		key_index = 0;
-		while (key_index < key_count){
-			keypoint& key_now = keys[key_index];
-			if (key_now.filtered == true){
-				key_index++;
+		key_count = keys.size();
+
+		//int key_index = 0;
+
+		//keypoint& key_test = keys[4586];
+		//key_test;
+
+		for (int key_index = 0; key_index < key_count; key_index++){
+			//keypoint& key_now = keys[key_index];
+			keypoint key_now = keys[key_index];
+			if (key_now.filtered == true) continue;
+
+			int idx = key_now.idx, idy = key_now.idy, oct = key_now.oct, kindex = (int)key_now.index;
+			float scale = key_now.scale;
+
+			int curRows = srcRows / exp2f(oct), curCols = srcCols / exp2f(oct);
+			float* or_mag = or_mag_oct[oct][kindex];
+
+			if (idx < region || idx > curRows - region - 1 || idy < region || idy > curCols - region - 1){
+				//key_now.filtered = true;
+				keys[key_index].filtered = true;
 				continue;
 			}
 
-			int idx = key_now.idx, idy = key_now.idy;
-			int oct = key_now.oct, kindex = (int)key_now.index;
+			float histo[36] = { 0 };
+			for (int i = -region; i < region; i++){
+				for (int j = -region; j < region; j++){
+					//if (eucDistance(idx,idy,idx + i, idy + j) > region) continue;
 
-			int curRows = srcRows / pow(2, oct);
-			int curCols = srcCols / pow(2, oct);
-
-			float* or_mag = or_mag_oct[oct][kindex];
-			//cv::Mat blur_img = blur_oct[oct][scale];
-			int maxk = std::min(region, curRows - idx - 1);
-			int mink = std::min(region, idx);
-			int maxl = std::min(region, srcCols - idy - 1);
-			int minl = std::min(region, idy);
-
-			float histo[36];
-			for (int b = 0; b < 36; b++){
-				histo[b] = 0;
-			}
-
-			for (int i = -mink; i < maxk; i++){
-				for (int j = -minl; j < maxl; j++){
-					if (eucDistance(idx, idy, idx + i, idy + j) > region ){
-						//printf("Skip!\n");
-						continue;
-					}
 					int id_or_mag = 2 * ((idx + i) * curCols + (idy + j));
 					int id_gKernel = (i + region) * W + (j + region);
 
-					//printf("Or: %f\n", or_mag[id_or_mag]);
 					int bin = (int)((180.0 / (M_PI * 10.0)) * or_mag[id_or_mag]);
-					//printf("Bin: %d\n", bin);
 					histo[bin] += gKernel[id_gKernel] * or_mag[id_or_mag + 1];
 				}
 			}
@@ -1306,23 +1339,49 @@ namespace img_proc{
 				}
 			}
 
-			for (int bin = 0; bin < 36; bin++){
-				if (bin != max_bin && histo[bin] >= 0.8 * max_hist){
-					keypoint newKey(idx, idy, oct, bin * ((M_PI * 10.0) / 180.0), kindex);
+			//float peaks[36] = { 0 };
+
+			for (int i = 0; i < 36; i++){
+				int left = i - 1, right = i + 1;
+				if (i == 0){
+					left = 35;
+				}
+				else if (i == 35){
+					right = 0;
+				}
+
+				if (max_hist != 0.0 && i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
+					//peaks[i] = histo[i];
+
+					//float orientation = mySiftVertParabola(left * 10 + 5, histo[left], i * 10 + 5, histo[i], right * 10 + 5, histo[right]);
+					float orientation = i * ((M_PI * 10.0) / 180.0);
+					keypoint newKey(idx, idy, oct, orientation, kindex);
 					keys.push_back(newKey);
-					key_count_new++;
+				}
+				else{
+					//peaks[i] = -1;
 				}
 			}
 
-			
-			keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+			int max_left = max_bin - 1, max_right = max_bin + 1;
+			if (max_bin == 0) max_left = 35;
+			else if (max_bin == 35) max_right = 0;
 
-			key_index++;
+			//printf("Fish: left %d, bin %d, right %d\n", max_left, max_bin, max_right);
+			//key_now.angle = mySiftVertParabola(max_left * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], max_right * 10 + 5, histo[max_right]);
+			//printf("Stop: %f\n", key_now.angle);
+			//key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
+			keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+			//delete[] peaks;
 		}
 
+		//getchar();
 		delete[] gKernel;
+		nvtxRangePop();
 
-		mySiftDescriptors(keys, blur_oct, or_mag_oct);
+		if(debug_statements) printf("Desc\n");
+
+		mySiftDescriptors(keys, blur_oct, or_mag_oct, unfiltered);
 
 		for (int oct = 0; oct < octaves; oct++){
 			for (int step = 0; step < s; step++){
@@ -1331,6 +1390,14 @@ namespace img_proc{
 		}
 		
 		//return dog_oct[0][0];
+		printf("Size before: %d\n", keys.size());
+		mySiftKeyCull(keys);
+		printf("Size after: %d\n", keys.size());
+
+		get_nvtAttrib("KD Tree Build", 0xFF888888);
+		kd_node fish = mySiftKDHelp(keys);
+		nvtxRangePop();
+		nvtxRangePop();
 		return original;
 
 		//int unfiltered = 0;
@@ -1450,6 +1517,7 @@ namespace img_proc{
 	}
 
 	void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
+		nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftEdgeResponses", 0xFF0000FF);
 		float r = 10;
 		float t = std::pow(r + 1, 2) / r;
 
@@ -1560,15 +1628,21 @@ namespace img_proc{
 
 			key_index++;
 		}
+		nvtxRangePop();
 	}
 
 
 	//void mySiftDescriptors
-	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct){
+	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct, int unfiltered){
 		int region = 8;
 		int key_count = keys.size();
+		nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftDescriptors [" + std::to_string(key_count) + " ]", 0xFF00FF00);
+		//printf("Key Count: %d\n", key_count);
+		//getchar();
 
 		for (int key_index = 0; key_index < key_count; key_index++){
+
+			//printf("Key: %d\n", key_index);
 
 			keypoint& key_now = keys[key_index];
 			if (key_now.filtered == true){
@@ -1648,6 +1722,7 @@ namespace img_proc{
 			delete[] magnitudes;
 			//printf("Fish 7\n");
 		}
+		nvtxRangePop();
 	}
 
 	std::vector<float> mySiftVectorThreshold(std::vector<float>& vec){
@@ -1689,6 +1764,7 @@ namespace img_proc{
 	}
 
 	cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py){
+		//nvtxEventAttributes_t eventAttrib1 = get_nvtAttrib("mySift_foDer", 0x0088FF00);
 		cv::Mat result = cv::Mat::zeros(3, 1, CV_32FC1);
 		//printf("Test: %d\n", neighbors[1].at<cv::Vec3b>(px - 1, py)[0]);
 		int rows = neighbors[1].rows, cols = neighbors[1].cols;
@@ -1714,10 +1790,12 @@ namespace img_proc{
 		//result.at<float>(0, 0) = dx;//  printf("Line 4  ");
 		//result.at<float>(1, 0) = dy;//  printf("Line 5  ");
 		//result.at<float>(2, 0) = ds;//  printf("Line 6\n");
+		//nvtxRangePop();
 		return result;
 	}
 
 	cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py){
+		//nvtxEventAttributes_t eventAttrib1 = get_nvtAttrib("mySift_soDer", 0xFF880000);
 		cv::Mat result = cv::Mat::zeros(3, 3, CV_32FC1);
 
 		int rows = neighbors[1].rows, cols = neighbors[1].cols;
@@ -1767,6 +1845,7 @@ namespace img_proc{
 		//printf("[ %f, %f, %f]\n", dxs, dys, dss);
 		//getchar();
 
+		//nvtxRangePop();
 		return result;
 	}
 
@@ -1843,19 +1922,60 @@ namespace img_proc{
 		return true;
 	}
 
+	void mySiftKeyCull(std::vector<keypoint>& keys){
+		get_nvtAttrib("Vector Cull " + std::to_string(keys.size()), 0xFF0000FF);
+		std::vector<keypoint>::iterator wall = keys.begin();
+		std::vector<keypoint>::iterator current = keys.begin();
+		std::vector<keypoint>::iterator back = keys.end();
+
+		while (current != back){
+			if ((*current).filtered == false){
+				std::iter_swap(current, wall);
+				wall++;
+			}
+			current++;
+		}
+		keys.resize(std::distance(keys.begin(), wall));
+		nvtxRangePop();
+	}
+
 	kd_node mySiftKDHelp(std::vector<keypoint>& keys){
 		std::string dims = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
 
 		int count = 0;
+		//printf("Starting the main tree\n");
 
-		kd_node* curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims, count);
+		float all_var[128] = { 0 }, all_mean[128] = { 0 };
+		std::vector<keypoint>::iterator front = keys.begin();
+		std::vector<keypoint>::iterator back = keys.end();
+		//printf("Fish 0\n");
+
+		int dist = std::distance(front, back);
+		for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+			if ((*iter).filtered == true) continue;
+			for (int i = 0; i < 128; i++)
+				all_mean[i] += (*iter).descriptors[i] / (float)dist;
+		}
+		//printf("Fish 1\n");
+
+		for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+			for (int i = 0; i < 128; i++)
+				all_var[i] += (((*iter).descriptors[i] - all_mean[i]) * ((*iter).descriptors[i] - all_mean[i])) / (float)dist;
+		}
+		//printf("Fish 2\n");
+
+		kd_node* curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims, all_var, count);
 		curr->parent = 0;
 		//printf("Count: %d\n", count);
+		//delete[] all_var;
+		//delete[] all_mean;
 
 		return *(curr);
 	}
 
-	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, int& count){
+	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, float* all_var, int& count){
+
+		//printf("One Fish ");
 		kd_node* curr = new kd_node;
 		curr->leaf_begin = front;
 		curr->leaf_end = back;
@@ -1868,7 +1988,7 @@ namespace img_proc{
 
 		int dist = std::distance(front, back);
 
-		float* data_mean = new float[128];
+		/*float* data_mean = new float[128];
 		float* data_var = new float[128];
 
 		for (int i = 0; i < 128; i++){
@@ -1903,7 +2023,7 @@ namespace img_proc{
 			if (dims[i] == '1')
 				continue;
 			data_var[i] /= dist;
-		}
+		}*/
 
 		int dim = 0;
 		float max_diff = 0.0;
@@ -1911,28 +2031,37 @@ namespace img_proc{
 		for (int i = 0; i < 128; i++){
 			if (dims[i] == '1')
 				continue;
-			if (data_var[i] >= max_diff){
+			if (all_var[i] >= max_diff){
 				dim = i;
-				max_diff = data_var[i];
+				max_diff = all_var[i];
 			}
 		}
 
+		//printf("Two Fish ");
+
 		dims[dim] = '1';
 		curr->dim = dim;
-		delete[] data_mean;
-		delete[] data_var;
+		//delete[] data_mean;
+		//delete[] data_var;
 
-		mySiftKDQuicksort(keys, front, back, dim);
+		//mySiftKDQuicksort(keys, front, back, dim);
+		//printf("Sorting now!\n");
+		mySiftKDRadixSort(keys, front, back, dim);
+		//printf("Sorting done!\n");
 		int middle = std::distance(front, back) / 2;
 		curr->median = (*(front + middle)).descriptors[dim];
+
+		//printf("Red Fish ");
 
 		//printf("Left: %d, Right: %d\n", std::distance(front, front + middle), std::distance(front + middle, back));
 		//getchar();
 
-		curr->left = mySiftKDTree(keys, front, front + middle, dims, count);
+		curr->left = mySiftKDTree(keys, front, front + middle, dims, all_var, count);
 		curr->left->parent = curr;
-		curr->right = mySiftKDTree(keys, front + middle, back, dims, count);
+		curr->right = mySiftKDTree(keys, front + middle, back, dims, all_var, count);
 		curr->right->parent = curr;
+
+		//printf("Blue Fish \n");
 
 		//if (curr.left->leaf == false){
 		//	printf("Test: %d\n", curr.left->dim);
@@ -1945,11 +2074,17 @@ namespace img_proc{
 		if (std::distance(front,back) <= 1){
 			return;
 		}
-		std::vector<keypoint>::iterator pivot = back - 1;
-		std::vector<keypoint>::iterator wall = front;
-		std::vector<keypoint>::iterator current = front;
+		else{
+			//printf("Dist: %d\n", std::distance(front, back));
+		}
+		//std::vector<keypoint>::iterator pivot = back - 1;
+		//std::vector<keypoint>::iterator wall = front;
+		//std::vector<keypoint>::iterator current = front;
+		std::vector<keypoint>::iterator pivot(back); pivot--;
+		std::vector<keypoint>::iterator wall(front);
+		std::vector<keypoint>::iterator current(front);
 		while (current != pivot){
-			if ((*current).descriptors[dim] < (*pivot).descriptors[dim]){
+			if ((*current).descriptors[dim] <= (*pivot).descriptors[dim]){
 				std::iter_swap(current, wall);
 				wall++;
 			}
@@ -1957,8 +2092,84 @@ namespace img_proc{
 		}
 		std::iter_swap(pivot, wall);
 
-		mySiftKDQuicksort(keys, front, wall, dim);
+		printf("Dist: %d\n", std::distance(front, wall));
+
+		if ((*wall).descriptors[dim] != 0.0) mySiftKDQuicksort(keys, front, wall, dim);
 		mySiftKDQuicksort(keys, wall + 1, back, dim);
+	}
+
+	unsigned int radixGetMax(unsigned int arr[], int n){
+		unsigned int max = arr[0];
+		for (int i = 1; i < n; i++){
+			if (arr[i] > max) max = arr[i];
+		}
+		return max;
+	}
+
+	void mySiftKDCountSort(unsigned int* data, unsigned int* index, int d, int exp){
+		//printf("Size: %d\n", d);
+		unsigned int* output = new unsigned int[d];
+		unsigned int* out_id = new unsigned int[d];
+		unsigned int count[10] = { 0 };
+		int i;
+
+		for (i = 0; i < d; i++){
+			//printf("Test1: %f, %u\n", data[i], data[i]);
+			count[(data[i] / exp) % 10] ++;
+		}
+
+		//for (i = 0; i < 10; i++){
+		//	printf("%d ", count[i]);
+		//}
+		//printf("\n");
+
+		for (i = 1; i < 10; i++){
+			//printf("S%d: c[i] %d, c[i - 1] %d \n", i, count[i], count[i - 1]);
+			count[i] += count[i - 1];
+		}
+
+		for (i = d - 1; i >= 0; i--){
+			//printf("Test1: %d\n", (data[i] / exp) % 10);
+			//printf("Test2: %d\n", count[(data[i] / exp) % 10] - 1);
+			output[count[(data[i] / exp) % 10] - 1] = data[i];
+			out_id[count[(data[i] / exp) % 10] - 1] = index[i];
+			count[(data[i] / exp) % 10] -= 1;
+		}
+
+		for (i = 0; i < d; i++){
+			data[i] = output[i];
+			index[i] = out_id[i];
+		}
+
+		delete[] output;
+		delete[] out_id;
+	}
+
+	void mySiftKDRadixSort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim){
+		int d = std::distance(front, back);
+		float* temp = new float[d];
+		unsigned int* data;// = new unsigned int[d];
+		unsigned int* index = new unsigned int[d];
+		for (int i = 0; i < d; i++){
+			temp[i] = (*(front + i)).descriptors[dim];
+			index[i] = i;
+			//printf("%f, %u \n", (*(front + i)).descriptors[dim], temp[i]);
+		}
+		data = (unsigned int*)temp;
+		unsigned int max = radixGetMax(data, d);
+
+		for (int exp = 1; max / exp > 0; exp *= 10){
+			mySiftKDCountSort(data, index, d, exp);
+		}
+
+		std::vector<keypoint> newVec(front, back);
+
+		for (int i = 0; i < d; i++){
+			*(front + i) = newVec[index[i]];
+		}
+
+		delete[] data;
+		delete[] index;
 	}
 
 	float mySiftDescDist(keypoint& key_1, keypoint& key_2){

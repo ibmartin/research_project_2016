@@ -4,11 +4,14 @@
 #include <opencv2\\core\core.hpp>
 #include <opencv2\highgui\highgui.hpp>
 #include "opencv2/imgproc/imgproc.hpp"
+#include "nvt_events.hpp"
 
 namespace img_proc{
 #define FILTER_SIZE 3
 #define M_PI           3.14159265358979323846  /* pi */
 #define SOBEL_SIZE 3
+#define UPPER_BIT 31
+#define LOWER_BIT 0
 
 	class keypoint
 	{
@@ -23,6 +26,10 @@ namespace img_proc{
 			oct = _oct;
 			angle = _angle;
 			index = _index;
+		}
+
+		keypoint(){
+
 		}
 	};
 
@@ -58,16 +65,20 @@ namespace img_proc{
 	cv::Mat fGaussTest(cv::Mat image);
 	cv::Mat mySift(cv::Mat image);
 	void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys);
-	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct);
+	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct, int unfiltered);
 	std::vector<float> mySiftVectorThreshold(std::vector<float>& vec);
 	void mySiftNormVec(std::vector<float>& vec);
 	cv::Mat mySift_foDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py);
 	bool mySiftWriteKeyFile(std::vector<keypoint>& keys);
 	bool mySiftReadKeyFile(std::vector<keypoint>& keys, std::string file_name);
+	void mySiftKeyCull(std::vector<keypoint>& keys);
 	kd_node mySiftKDHelp(std::vector<keypoint>& keys);
-	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, int& count);
+	kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, float* all_var, int& count);
 	void mySiftKDQuicksort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim);
+	unsigned int radixGetMax(unsigned int arr[], int n);
+	void mySiftKDCountSort(unsigned int data[], unsigned int index[], int d, int exp);
+	void mySiftKDRadixSort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim);
 	float mySiftDescDist(keypoint& key_1, keypoint& key_2);
 	float mySiftTheoryDist(kd_node* start, keypoint& search_key);
 	kd_node* mySiftKDIterSearch(kd_node* root, std::vector<keypoint>& keys, keypoint& search_key);
