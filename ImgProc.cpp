@@ -1553,7 +1553,7 @@ namespace img_proc{
 
 			//printf("Point %d: dx: %f; dy: %f; ds: %f\n", key_index, tptr[0], tptr[1], tptr[2]);
 
-			cv::Mat neg_soDer = soDer * -1;
+			//cv::Mat neg_soDer = soDer * -1;
 
 			float det = 0;	//Find Det(soDer)
 			det += soDer.at<float>(0, 0) * ((soDer.at<float>(1, 1) * soDer.at<float>(2, 2)) - (soDer.at<float>(2, 1) * soDer.at<float>(1, 2)));
@@ -1580,7 +1580,7 @@ namespace img_proc{
 						if (i == a) continue;
 						for (int j = 0; j < 3; j++){
 							if (j == b) continue;
-							vals[box] = neg_soDer.at<float>(i, j);
+							vals[box] = -soDer.at<float>(i, j);
 							box++;
 						}
 					}
@@ -1594,22 +1594,37 @@ namespace img_proc{
 				}
 			}
 
-			cv::Mat extreme = emt * foDer;
+			//cv::Mat extreme = emt * foDer;
 
-			float* exptr = (float*)extreme.datastart;
-			float mult = 1.0;
+			//float* exptr = (float*)extreme.datastart;
+			//float mult = 1.0;
 
 			//printf("Ex %d: %f, %f, %f\n", key_index, exptr[0], exptr[1], exptr[2]);
-			if ( abs(exptr[0]) > 0.5 || abs(exptr[1]) > 0.5 || abs(exptr[2]) > 0.5 ){
-				key_now.filtered = true;
+			//if ( abs(exptr[0]) > 0.5 || abs(exptr[1]) > 0.5 || abs(exptr[2]) > 0.5 ){
+			//	key_now.filtered = true;
+			//	key_index++;
+			//	continue;
+			//}
+
+			float expt0 = (emt.at<float>(0, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(0, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(0, 2) * foDer.at<float>(2, 0));
+			float expt1 = (emt.at<float>(1, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(1, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(1, 2) * foDer.at<float>(2, 0));
+			float expt2 = (emt.at<float>(2, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(2, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(2, 2) * foDer.at<float>(2, 0));
+
+			if (abs(expt0) > 0.5 || abs(expt1) > 0.5 || abs(expt2) > 0.5){
+				keys[key_index].filtered = true;
+				//key_now.filtered = true;
 				key_index++;
 				continue;
 			}
 
 			float ex_val = 0.0;
-			for (int i = 0; i < 3; i++){
-				ex_val += tptr[i] * exptr[i];
-			}
+			//for (int i = 0; i < 3; i++){
+			//	ex_val += tptr[i] * exptr[i];
+			//}
+			ex_val += tptr[0] * expt0;
+			ex_val += tptr[1] * expt1;
+			ex_val += tptr[2] * expt2;
+
 			ex_val *= 0.5;
 			ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx,key_now.idy);
 			if (abs(ex_val) < 0.03){
@@ -2110,7 +2125,7 @@ namespace img_proc{
 		//printf("Size: %d\n", d);
 		unsigned int* output = new unsigned int[d];
 		unsigned int* out_id = new unsigned int[d];
-		unsigned int count[10] = { 0 };
+		int count[10] = { 0 };
 		int i;
 
 		for (i = 0; i < d; i++){

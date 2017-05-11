@@ -15,6 +15,17 @@
 
 #define M_PI				3.14159265358979323846  /* pi */
 #define REGION_SIZE			4
+#define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
+{
+	//fprintf(stderr, "Checking\n");
+	if (code != cudaSuccess)
+	{
+		fprintf(stderr, "GPUassert: %s %s %d\n", cudaGetErrorString(code), file, line);
+		getchar();
+		if (abort) exit(code);
+	}
+}
 
 //__global__ void rgb2GrayKernel(unsigned char* dest_data, unsigned char* src_data, int rows, int cols, int chunkRows, int offset);
 
@@ -419,6 +430,34 @@ __global__ void mySiftOrMagKernel(float* curr_data, float* or_mag, int curRows, 
 
 	or_mag[2 * idx] = val;
 	
+}
+
+__global__ void mySiftCountingKernel(unsigned int* data, int* count, int exp, int d){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (idx < d){
+		atomicAdd((count + ((data[idx] / exp) % 10)), 1);
+	}
+}
+
+__global__ void mySiftCountSortKernel(unsigned int* data, unsigned int* out_data, unsigned int* index, unsigned int* out_index, int* count, int exp, int d){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (idx < d){
+		int loc = atomicAdd(count + ((data[idx] / exp) % 10), -1);
+		loc -= 1;
+		out_data[loc] = data[idx];
+		out_index[loc] = index[idx];
+	}
+}
+
+__global__ void mySiftCountSortSwitchKernel(unsigned int* data, unsigned int* out_data, unsigned int* index, unsigned int* out_index, int* count, int exp, int d){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+	if (idx < d){
+		data[idx] = out_data[idx];
+		index[idx] = out_index[idx];
+	}
 }
 
 #endif

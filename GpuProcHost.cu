@@ -1057,13 +1057,12 @@ void cudaTest(int curRows, int curCols){
 
 	int pixels = MEM_CAP / (3.5 * datasize);
 	int blocks = 1;
-	testKernel << <20, 256 >> >();
-	cudaDeviceSynchronize();
+	testKernel <<<20, 256 >>>();
 	cudaError_t err = cudaGetLastError();
-	if (cudaSuccess != err){
+	if (cudaSuccess != err || true){
 		printf("Fish %s\n", cudaGetErrorString(err));
 	}
-	
+	gpuErrchk(cudaDeviceSynchronize());
 
 	remainder -= pixels;
 }
@@ -1104,6 +1103,84 @@ void cudaMySiftOrMagGen(float* curr_data, float* or_mag, int curRows, int curCol
 		offset += pixels;
 		remainder -= pixels;
 	}
+}
+
+void cudaMySiftCountSort(unsigned int* data, unsigned int* index, int d, int exp){
+	//printf("Start Count Sort\n");
+	get_nvtAttrib("Count Sort", 0xFF000088);
+	unsigned int* deviceData;
+	unsigned int* deviceOutData;
+	unsigned int* deviceIndex;
+	unsigned int* deviceOutIndex;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int srcN = d * sizeof(unsigned int);
+	int blocks = (d + threadsPerBlock - 1) / threadsPerBlock;
+	//int exp_cur = 1;
+
+	int* count = new int[10];
+	for (int i = 0; i < 10; i++) count[i] = 0;
+	int* deviceCount;
+	cudaMalloc((void**)&deviceData, srcN);
+	cudaMalloc((void**)&deviceOutData, srcN);
+	cudaMalloc((void**)&deviceIndex, srcN);
+	cudaMalloc((void**)&deviceOutIndex, srcN);
+	cudaMalloc((void**)&deviceCount, 10 * sizeof(int));
+	//printf("Test\n");
+
+	//gpuErrchk(cudaMemcpy(deviceData, data, srcN, cudaMemcpyHostToDevice));
+	//gpuErrchk(cudaMemcpy(deviceIndex, index, srcN, cudaMemcpyHostToDevice));
+	//gpuErrchk(cudaMemcpy(deviceCount, count, 10 * sizeof(int), cudaMemcpyHostToDevice));
+	//gpuErrchk(cudaPeekAtLastError());
+
+	
+
+	cudaMemcpy(deviceData, data, srcN, cudaMemcpyHostToDevice);
+	cudaMemcpy(deviceIndex, index, srcN, cudaMemcpyHostToDevice);
+	cudaMemcpy(deviceCount, count, 10 * sizeof(int), cudaMemcpyHostToDevice);
+
+	//printf("Setup\n");
+
+	int exp_curr = 1;
+	while (exp / exp_curr > 0){
+		//printf("Loop: %d\n", exp_curr);
+		//printf("Memcpy In: %d\n", exp_curr);
+
+		mySiftCountingKernel << <blocks, threadsPerBlock >> > (deviceData, deviceCount, exp_curr, d);
+		//gpuErrchk(cudaPeekAtLastError());
+		cudaDeviceSynchronize();
+		
+		cudaMemcpy(count, deviceCount, 10 * sizeof(int), cudaMemcpyDeviceToHost);
+		//printf("Memcpy Out: %d\n", exp_curr);
+
+		for (int i = 1; i < 10; i++){
+			count[i] += count[i - 1];
+		}
+		cudaMemcpy(deviceCount, count, 10 * sizeof(int), cudaMemcpyHostToDevice);
+
+		mySiftCountSortKernel << <blocks, threadsPerBlock >> > (deviceData, deviceOutData, deviceIndex, deviceOutIndex, deviceCount, exp_curr, d);
+		cudaDeviceSynchronize();
+		mySiftCountSortSwitchKernel << <blocks, threadsPerBlock >> > (deviceData, deviceOutData, deviceIndex, deviceOutIndex, deviceCount, exp_curr, d);
+
+		//printf("Kernels: %d\n", exp_curr);
+
+		
+		for (int i = 0; i < 10; i++) count[i] = 0;
+		exp_curr *= 10;
+	}
+
+	cudaMemcpy(data, deviceOutData, srcN, cudaMemcpyDeviceToHost);
+	cudaMemcpy(index, deviceOutIndex, srcN, cudaMemcpyDeviceToHost);
+
+	cudaFree(deviceData);
+	cudaFree(deviceOutData);
+	cudaFree(deviceIndex);
+	cudaFree(deviceOutIndex);
+	cudaFree(deviceCount);
+
+	delete[] count;
+	//mySiftCountSortKernel << <blocks, threadsPerBlock >> > (deviceData, deviceOutData, deviceIndex, deviceOutIndex, deviceCount, exp);
+	nvtxRangePop();
+
 }
 
 #endif

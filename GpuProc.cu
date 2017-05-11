@@ -32,6 +32,20 @@ public:
 	}
 };
 
+class kd_node
+{
+public:
+	bool leaf = false;
+	int dim = 0;
+	float median = 0;
+
+	kd_node* parent;
+	kd_node* left;
+	kd_node* right;
+	std::vector<keypoint>::iterator leaf_begin;
+	std::vector<keypoint>::iterator leaf_end;
+};
+
 float eucDistance(float x1, float y1, float x2, float y2){
 	return sqrt(pow(x2 - x1, 2) + pow(y2 - y1, 2));
 }
@@ -371,7 +385,7 @@ cv::Mat mySift_soDer(std::vector<cv::Mat>& neighbors, int px, int py){
 void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
 	float r = 10;
 	float t = std::pow(r + 1, 2) / r;
-	nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftEdgeResponses", 0xFF0000FF);
+	//get_nvtAttrib("mySiftEdgeResponses", 0xFF0000FF);
 
 	int key_count = keys.size();
 	int key_index = 0;
@@ -387,7 +401,9 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 		cv::Mat foDer = mySift_foDer(neighbors, key_now.idx, key_now.idy);
 		cv::Mat soDer = mySift_soDer(neighbors, key_now.idx, key_now.idy);
 
-		cv::Mat neg_soDer = soDer * -1;
+		//cv::Mat neg_soDer = soDer * -1;
+		//cv::Mat neg_2Der;// = soDer * -1.0;
+		//neg_2Der = soDer * -1.0;
 
 		float det = 0;	//Find Det(soDer)
 		det += soDer.at<float>(0, 0) * ((soDer.at<float>(1, 1) * soDer.at<float>(2, 2)) - (soDer.at<float>(2, 1) * soDer.at<float>(1, 2)));
@@ -395,7 +411,8 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 		det += soDer.at<float>(0, 2) * ((soDer.at<float>(1, 0) * soDer.at<float>(2, 1)) - (soDer.at<float>(2, 0) * soDer.at<float>(1, 1)));
 
 		if (det == 0){
-			key_now.filtered = true;
+			keys[key_index].filtered = true;
+			//key_now.filtered = true;
 			key_index++;
 			continue;
 		}
@@ -414,7 +431,7 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 					if (i == a) continue;
 					for (int j = 0; j < 3; j++){
 						if (j == b) continue;
-						vals[box] = neg_soDer.at<float>(i, j);
+						vals[box] = -soDer.at<float>(i, j);
 						box++;
 					}
 				}
@@ -428,25 +445,35 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 			}
 		}
 
-		cv::Mat extreme = emt * foDer;
+		float expt0 = (emt.at<float>(0, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(0, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(0, 2) * foDer.at<float>(2, 0));
+		float expt1 = (emt.at<float>(1, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(1, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(1, 2) * foDer.at<float>(2, 0));
+		float expt2 = (emt.at<float>(2, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(2, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(2, 2) * foDer.at<float>(2, 0));
 
-		float* exptr = (float*)extreme.datastart;
+		//cv::Mat extreme = emt * foDer;
 
-		if (abs(exptr[0]) > 0.5 || abs(exptr[1]) > 0.5 || abs(exptr[2]) > 0.5){
-			key_now.filtered = true;
+		//float* exptr = (float*)extreme.datastart;
+
+		if (abs(expt0) > 0.5 || abs(expt1) > 0.5 || abs(expt2) > 0.5){
+			keys[key_index].filtered = true;
+			//key_now.filtered = true;
 			key_index++;
 			continue;
 		}
 
 		float ex_val = 0.0;
-		for (int i = 0; i < 3; i++){
-			ex_val += tptr[i] * exptr[i];
-		}
+		//for (int i = 0; i < 3; i++){
+		//	ex_val += tptr[i] * exptr[i];
+		//}
+		ex_val += tptr[0] * expt0;
+		ex_val += tptr[1] * expt1;
+		ex_val += tptr[2] * expt2;
+
 		ex_val *= 0.5;
 		ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx, key_now.idy);
 		if (abs(ex_val) < 0.03){
 			//printf("ex_val: %f\n", abs(ex_val));	//Fix Later
-			key_now.filtered = true;
+			keys[key_index].filtered = true;
+			//key_now.filtered = true;
 			key_index++;
 			continue;
 		}
@@ -455,13 +482,14 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 		float h_det = dxx * dyy - pow(dxy, 2);
 
 		if (h_det <= 0 || pow(h_trace, 2) / h_det > t){
-			key_now.filtered = true;
+			keys[key_index].filtered = true;
+			//key_now.filtered = true;
 		}
 
 		key_index++;
 	}
 
-	nvtxRangePop();
+	//nvtxRangePop();
 
 }
 
@@ -616,7 +644,7 @@ std::vector<float> mySiftVectorThreshold(std::vector<float>& vec){
 	return res;
 }
 
-void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct, int unfiltered){
+void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct){
 	int region = 8;
 	int key_count = keys.size();
 	//nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftDescriptors", 0xFF00FF00);
@@ -722,6 +750,123 @@ void mySiftKeyCull(std::vector<keypoint>& keys){
 	}
 	keys.resize(std::distance(keys.begin(), wall));
 	nvtxRangePop();
+}
+
+unsigned int radixGetMax(unsigned int arr[], int n){
+	unsigned int max = arr[0];
+	for (int i = 1; i < n; i++){
+		if (arr[i] > max) max = arr[i];
+	}
+	return max;
+}
+
+void mySiftKDCountSort(unsigned int* data, unsigned int* index, int d, int exp){
+
+}
+
+void mySiftKDRadixSort(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, int dim){
+	int d = std::distance(front, back);
+	float* temp = new float[d];
+	unsigned int* data;// = new unsigned int[d];
+	unsigned int* index = new unsigned int[d];
+	for (int i = 0; i < d; i++){
+		temp[i] = (*(front + i)).descriptors[dim];
+		index[i] = i;
+		//printf("%f, %u \n", (*(front + i)).descriptors[dim], temp[i]);
+	}
+	data = (unsigned int*)temp;
+	unsigned int max = radixGetMax(data, d);
+
+	//for (int exp = 1; max / exp > 0; exp *= 10){
+	//	mySiftKDCountSort(data, index, d, exp);
+	//}
+
+	get_nvtAttrib("Count Sort", 0xFF888888);
+	cudaMySiftCountSort(data, index, d, max);
+	nvtxRangePop();
+
+	std::vector<keypoint> newVec(front, back);
+
+	for (int i = 0; i < d; i++){
+		*(front + i) = newVec[index[i]];
+	}
+
+	delete[] temp;
+	delete[] index;
+	cudaDeviceSynchronize();
+}
+
+kd_node* mySiftKDTree(std::vector<keypoint>& keys, std::vector<keypoint>::iterator front, std::vector<keypoint>::iterator back, std::string dims, float* all_var, int& count){
+	kd_node* curr = new kd_node;
+	curr->leaf_begin = front;
+	curr->leaf_end = back;
+
+	int dist = std::distance(front, back);
+
+	if (dist <= 1 || dims.find('0') == std::string::npos){
+		curr->leaf = true;
+		count += 1;
+		return curr;
+	}
+
+	int dim = 0;
+	float max_diff = 0.0;
+
+	for (int i = 0; i < 128; i++){
+		if (dims[i] == '1')
+			continue;
+		if (all_var[i] >= max_diff){
+			dim = i;
+			max_diff = all_var[i];
+		}
+	}
+
+	dims[dim] = '1';
+	curr->dim = dim;
+
+	mySiftKDRadixSort(keys, front, back, dim);
+
+	int middle = std::distance(front, back) / 2;
+	curr->median = (*(front + middle)).descriptors[dim];
+
+	curr->left = mySiftKDTree(keys, front, front + middle, dims, all_var, count);
+	curr->left->parent = curr;
+	curr->right = mySiftKDTree(keys, front + middle, back, dims, all_var, count);
+	curr->right->parent = curr;
+
+	return curr;
+
+}
+
+kd_node mySiftKDHelp(std::vector<keypoint>& keys){
+	std::string dims = "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000";
+
+	int count = 0;
+	//printf("Starting the main tree\n");
+
+	float all_var[128] = { 0 }, all_mean[128] = { 0 };
+	std::vector<keypoint>::iterator front = keys.begin();
+	std::vector<keypoint>::iterator back = keys.end();
+
+	int dist = std::distance(front, back);
+	for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+		if ((*iter).filtered == true) continue;
+		for (int i = 0; i < 128; i++)
+			all_mean[i] += (*iter).descriptors[i] / (float)dist;
+	}
+	printf("Fish 1\n");
+
+	for (std::vector<keypoint>::iterator iter = front; iter != back; iter++){
+		if ((*iter).filtered == true) continue;
+		for (int i = 0; i < 128; i++)
+			all_var[i] += (((*iter).descriptors[i] - all_mean[i]) * ((*iter).descriptors[i] - all_mean[i])) / (float)dist;
+	}
+
+	printf("Fish 2\n");
+
+	kd_node* curr = mySiftKDTree(keys, keys.begin(), keys.end(), dims, all_var, count);
+	curr->parent = 0;
+	return *curr;
 }
 
 Mat mySift(Mat original){
@@ -887,19 +1032,35 @@ Mat mySift(Mat original){
 
 			//cudaDeviceSynchronize();
 			cudaMySiftOrMagGen(curr_data, or_mag, curRows, curCols);
+			cudaDeviceSynchronize();
 			//cudaTest(curRows, curCols);
 			or_mag_current.push_back(or_mag);
 		}
 		or_mag_oct.push_back(or_mag_current);
 	}
+
 	nvtxRangePop();
 
 	get_nvtAttrib("Key Culling", 0xFF000088);
 	//printf("Keys: %d\n", keys.size());
 
-	mySiftEdgeResponses(dog_oct, keys);
+	printf("OrMagTest\n");
+	cudaDeviceSynchronize();
+	cudaTest(original.rows, original.cols);
+	//frgb2Gray(original);
+	printf("OrMagTest End\n");
 
-	int unfiltered = 0;
+	mySiftEdgeResponses(dog_oct, keys);
+	cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
+
+	cudaTest(original.rows, original.cols);
+
+	printf("Passed!\n");
+	//getchar();
+
+	/*int unfiltered = 0;
 	std::vector<keypoint>::iterator iter;
 	for (iter = keys.begin(); iter != keys.end();){
 		if ((*iter).filtered){
@@ -910,7 +1071,7 @@ Mat mySift(Mat original){
 			unfiltered++;
 			iter++;
 		}
-	}
+	}*/
 
 	mySiftKeyCull(keys);
 	key_count = keys.size();
@@ -921,26 +1082,39 @@ Mat mySift(Mat original){
 
 	cv::Mat output;
 
-	//cudaDeviceSynchronize();
+	cudaDeviceSynchronize();
 
+	printf("OrAssign\n");
 	mySiftOrAssign(keys, or_mag_oct, srcRows, srcCols);
 	//printf("OrAssign Done\n");
 
-	mySiftDescriptors(keys, blur_oct, or_mag_oct, unfiltered);
+	printf("Descriptors\n");
+	mySiftDescriptors(keys, blur_oct, or_mag_oct);
 
 	key_count = keys.size();
 
 	//printf("Unfiltered: %d\n", key_count);
 	//mySiftWriteKeyFile(keys);
 
+	mySiftKeyCull(keys);
+	printf("KDTree\n");
+	get_nvtAttrib("KDTree", 0xFF000088);
+	kd_node fish = mySiftKDHelp(keys);
+	//frgb2Gray(original);
+	cudaDeviceSynchronize();
+	nvtxRangePop();
+
 	for (int oct = 0; oct < octaves; oct++){
 		for (int step = 0; step < s; step++){
 			delete[] or_mag_oct[oct][step];
 		}
 	}
-
 	//return dog_oct[0][0];
 	nvtxRangePop();
+	//mySiftKeyCull(keys);
+	
+	nvtxRangePop();
+	//mySiftKeyCull(keys);
 	return original;
 
 	if (full_dog == 1){
