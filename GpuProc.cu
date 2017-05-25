@@ -79,7 +79,7 @@ Mat frgb2Gray(Mat image){
 }
 
 Mat reverse(Mat image){
-	get_nvtAttrib("frgb2Gray GPU", 0xFF880000);
+	get_nvtAttrib("reverse GPU", 0xFF880000);
 	Mat out = Mat(image.rows, image.cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
@@ -92,10 +92,12 @@ Mat reverse(Mat image){
 
 Mat gammaCorrection(Mat image, double gamma){
 	get_nvtAttrib("gammaCorrection GPU", 0xFF880000);
+	get_nvtAttrib("Setup Outer", 0xFF000088);
 	Mat out = Mat(image.rows, image.cols, image.type());
 
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
+	nvtxRangePop();
 	cudaGammaCorrection(input, output, gamma, image.rows, image.cols);
 
 	nvtxRangePop();
@@ -226,10 +228,12 @@ Mat fGaussianFilter(Mat image, double sigma){
 
 Mat sobelFilter(Mat image){
 	get_nvtAttrib("sobelFilter GPU", 0xFF880000);
+	get_nvtAttrib("Setup outer", 0xFF000088);
 	Mat out(image.rows, image.cols, image.type());
 	//Mat temp(image.rows, image.cols, image.type());
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
+	nvtxRangePop();
 	cudaSobelFilter(input, output, image.rows, image.cols);
 
 	nvtxRangePop();
@@ -305,7 +309,7 @@ Mat gaussianPyramid(cv::Mat image, uchar levels, float scale){
 
 bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
 	std::ofstream key_file;
-	key_file.open("D://School//Summer 2016//Research//gray//keys_gpu.txt");
+	key_file.open("D://School//Summer 2016//Research//mySift//keys_gpu.txt");
 
 	for (keypoint& key : keys){
 		if (!key.filtered){
@@ -497,6 +501,7 @@ float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, 
 	cv::Mat_<float> mat_a = cv::Mat::zeros(3, 3, CV_32F);
 	cv::Mat_<float> mat_b = cv::Mat::zeros(3, 1, CV_32F);
 	//l_x = l_x * ((M_PI * 10.0) / 180.0); p_x = p_x * ((M_PI * 10.0) / 180.0); r_x = r_x * ((M_PI * 10.0) / 180.0);
+	//printf("Points: l_x %f, l_y %f, p_x %f, p_y %f, r_x %f, r_y %f\n", l_x, l_y, p_x, p_y, r_x, r_y);
 
 	mat_a.at<float>(0, 0) = l_x * l_x;
 	mat_a.at<float>(1, 0) = p_x * p_x;
@@ -506,17 +511,35 @@ float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, 
 	mat_a.at<float>(1, 1) = p_x;
 	mat_a.at<float>(2, 1) = r_x;
 
+	mat_a.at<float>(0, 2) = 1.0;
+	mat_a.at<float>(1, 2) = 1.0;
+	mat_a.at<float>(2, 2) = 1.0;
+
+	//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(0, 0), mat_a.at<float>(0, 1), mat_a.at<float>(0, 2));
+	//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(1, 0), mat_a.at<float>(1, 1), mat_a.at<float>(1, 2));
+	//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(2, 0), mat_a.at<float>(2, 1), mat_a.at<float>(2, 2));
+	//printf("\n");
+
 	mat_b.at<float>(0, 0) = l_y;
 	mat_b.at<float>(1, 0) = p_y;
 	mat_b.at<float>(2, 0) = r_y;
 
-	//cv::Mat_<float> mat_result = cv::Mat::zeros(3, 1, CV_32F);
-	//cv::solve(mat_a, mat_b, mat_result);
-	cv::Mat mat_result = mat_a.inv() * mat_b;
+	//printf("[ %10.6f ]\n", mat_b.at<float>(0, 0));
+	//printf("[ %10.6f ]\n", mat_b.at<float>(1, 0));
+	//printf("[ %10.6f ]\n", mat_b.at<float>(2, 0));
+	//printf("\n");
 
-	//float result = 0.0;
-	printf("Test: %f, %f, %f\n", mat_result.at<float>(0, 0), mat_result.at<float>(1, 0), mat_result.at<float>(2, 0));
+	cv::Mat mat_result = cv::Mat::zeros(3, 1, CV_32F);
+	solve(mat_a, mat_b, mat_result);
+
 	float result = -mat_result.at<float>(1, 0) / (2.0 * mat_result.at<float>(0, 0));
+	if (result < 0) result += 360;
+	else if (result > 360) result -= 360;
+
+	//printf("Result: %f\n", result);
+	//getchar();
+
+	result *= M_PI / 180.0;
 	return result;
 }
 
@@ -575,6 +598,11 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 			}
 		}
 
+		if (!(max_hist > 0.0)){
+			keys[key_index].filtered = true;
+			continue;
+		}
+
 		//float peaks[36] = { 0 };
 
 		for (int i = 0; i < 36; i++){
@@ -589,8 +617,8 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 			if (max_hist != 0.0 && i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
 				//peaks[i] = histo[i];
 
-				//float orientation = mySiftVertParabola(left * 10 + 5, histo[left], i * 10 + 5, histo[i], right * 10 + 5, histo[right]);
-				float orientation = i * ((M_PI * 10.0) / 180.0);
+				float orientation = mySiftVertParabola((i - 1) * 10 + 5, histo[left], i * 10 + 5, histo[i], (i + 1) * 10 + 5, histo[right]);
+				//float orientation = i * ((M_PI * 10.0) / 180.0);
 				keypoint newKey(idx, idy, oct, orientation, kindex);
 				keys.push_back(newKey);
 			}
@@ -607,7 +635,11 @@ void mySiftOrAssign(std::vector<keypoint>& keys, std::vector<std::vector<float*>
 		//key_now.angle = mySiftVertParabola(max_left * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], max_right * 10 + 5, histo[max_right]);
 		//printf("Stop: %f\n", key_now.angle);
 		//key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
-		keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+
+		//keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+		
+		float angle = mySiftVertParabola((max_bin - 1) * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], (max_bin + 1) * 10 + 5, histo[max_right]);
+		keys[key_index].angle = angle;
 		//delete[] peaks;
 	}
 
@@ -671,8 +703,8 @@ void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::
 			continue;
 		}
 
-		//printf("Fish 0 %d,%d\n", key_now.idx, key_now.idy);
-		//printf("Angle: %f\n", key_now.angle);
+		//printf("  Fish 0 %d,%d\n", key_now.idx, key_now.idy);
+		//printf("    Angle: %f\n", key_now.angle);
 
 		int or_mag_size = 2 * curRows * curCols;
 		int W = 2 * region + 1;
@@ -682,7 +714,7 @@ void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::
 		createFilter(gKernel, 8.0, region);
 		cv::Mat gauss_cur = current(cv::Rect(key_now.idy - region, key_now.idx - region, W, W));
 
-		//printf("Fish 1 %d,%d\n", key_now.idx, key_now.idy);
+		//printf("  Fish 1 %d,%d\n", key_now.idx, key_now.idy);
 
 		for (int i = 0; i < W; i++){
 			for (int j = 0; j < W; j++){
@@ -701,7 +733,7 @@ void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::
 
 		delete[] gKernel;
 
-		//printf("Fish 2 %d,%d\n", key_now.idx, key_now.idy);
+		//printf("  Fish 2 %d,%d\n", key_now.idx, key_now.idy);
 		std::vector<float> descriptors;
 
 		for (int x = 0; x < W - 1; x += 4){
@@ -781,9 +813,37 @@ void mySiftKDRadixSort(std::vector<keypoint>& keys, std::vector<keypoint>::itera
 	//	mySiftKDCountSort(data, index, d, exp);
 	//}
 
-	get_nvtAttrib("Count Sort", 0xFF888888);
-	cudaMySiftCountSort(data, index, d, max);
-	nvtxRangePop();
+	if (d > 64){
+		get_nvtAttrib("Count Sort", 0xFF888888);
+		cudaMySiftCountSort(data, index, d, max);
+		nvtxRangePop();
+	}
+	else{
+		//get_nvtAttrib("Select Sort", 0xFF0000FF);
+		float temp_val = 0.0, min_val = 0.0;
+		int temp_id = 0, min_id = 0;
+		for (int wall = 0; wall < d - 1; wall++){
+			min_val = temp[wall];
+			min_id = wall;
+
+			for (int itr = wall; itr < d; itr++){
+				if (temp[itr] < min_val){
+					min_val = temp[itr];
+					min_id = itr;
+				}
+			}
+			temp_val = temp[wall];
+			temp_id = index[wall];
+
+			temp[wall] = temp[min_id];
+			index[wall] = index[min_id];
+
+			temp[min_id] = temp_val;
+			index[min_id] = temp_id;
+
+		}
+		//nvtxRangePop();
+	}
 
 	std::vector<keypoint> newVec(front, back);
 
@@ -1041,7 +1101,7 @@ Mat mySift(Mat original){
 
 	nvtxRangePop();
 
-	get_nvtAttrib("Key Culling", 0xFF000088);
+	get_nvtAttrib("Key Culling " + std::to_string(keys.size()), 0xFF000088);
 	//printf("Keys: %d\n", keys.size());
 
 	printf("OrMagTest\n");
@@ -1052,10 +1112,10 @@ Mat mySift(Mat original){
 
 	mySiftEdgeResponses(dog_oct, keys);
 	cudaDeviceSynchronize();
-	cudaDeviceSynchronize();
-	cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
+	//cudaDeviceSynchronize();
 
-	cudaTest(original.rows, original.cols);
+	//cudaTest(original.rows, original.cols);
 
 	printf("Passed!\n");
 	//getchar();
@@ -1086,15 +1146,16 @@ Mat mySift(Mat original){
 
 	printf("OrAssign\n");
 	mySiftOrAssign(keys, or_mag_oct, srcRows, srcCols);
-	//printf("OrAssign Done\n");
+	printf("OrAssign Done!\n");
 
 	printf("Descriptors\n");
 	mySiftDescriptors(keys, blur_oct, or_mag_oct);
+	printf("Descriptors Done!\n");
 
 	key_count = keys.size();
 
 	//printf("Unfiltered: %d\n", key_count);
-	//mySiftWriteKeyFile(keys);
+	
 
 	mySiftKeyCull(keys);
 	printf("KDTree\n");
@@ -1114,6 +1175,7 @@ Mat mySift(Mat original){
 	//mySiftKeyCull(keys);
 	
 	nvtxRangePop();
+	//mySiftWriteKeyFile(keys);
 	//mySiftKeyCull(keys);
 	return original;
 

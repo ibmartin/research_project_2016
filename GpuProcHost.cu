@@ -170,6 +170,7 @@ void cudaReverse(unsigned char* input, unsigned char* output, int srcRows, int s
 }
 
 void cudaGammaCorrection(unsigned char* input, unsigned char* output, double gamma, int srcRows, int srcCols){
+	get_nvtAttrib("Setup Inner", 0xFF000088);
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
 	int threadsPerBlock = THREADS_PER_BLOCK;
@@ -185,7 +186,9 @@ void cudaGammaCorrection(unsigned char* input, unsigned char* output, double gam
 		chunkRows = srcRows;
 	}
 	int rounds = ceil(srcRows / (double)chunkRows);
+	nvtxRangePop();
 
+	get_nvtAttrib("Work Loop: " + std::to_string(srcRows * srcCols / rounds), 0xFF888888);
 	for (int step = 0; step < rounds; step++){
 		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
 		if (destN <= 0){
@@ -196,13 +199,16 @@ void cudaGammaCorrection(unsigned char* input, unsigned char* output, double gam
 
 		cudaMalloc(&deviceDestData, destN*sizeof(unsigned char));
 
+		get_nvtAttrib("Kernel", 0xFF00FF00);
 		gammaCorrectionKernel <<<blocks, threadsPerBlock >>> (deviceDestData, deviceSrcData, srcRows, srcCols, gamma, chunkRows, offset);
+		nvtxRangePop();
 
 		cudaMemcpy(output + offset, deviceDestData, destN*sizeof(unsigned char), cudaMemcpyDeviceToHost);
 		cudaFree(deviceDestData);
 
 		offset += destN;
 	}
+	nvtxRangePop();
 
 	cudaFree(deviceSrcData);
 
@@ -477,6 +483,7 @@ void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 }
 
 void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
+	get_nvtAttrib("Setup Inner", 0xFF000088);
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
 	short* deviceTempData;
@@ -525,7 +532,9 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 	int rounds = ceil(srcRows / (double)chunkRows);
 
 	short* temp_data = new short[3 * srcRows * srcCols];
+	nvtxRangePop();
 
+	get_nvtAttrib("Gradient", 0xFF888888);
 	for (int step = 0; step < rounds; step++){
 		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
 		if (destN <= 0){
@@ -547,6 +556,7 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 	cudaFree(deviceSobel_y);
 	cudaFree(deviceRangeMin);
 	cudaFree(deviceRangeMax);
+	nvtxRangePop();
 	//printf("Works!\n");
 
 	//cudaMemcpy(rangeMin, deviceRangeMin, sizeof(double), cudaMemcpyDeviceToHost);
@@ -554,6 +564,7 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 
 	//printf("Host temp data done");
 
+	get_nvtAttrib("Range Find", 0xFF008800);
 	for (int i = 0; i < srcRows; i++){
 		for (int j = 0; j < srcCols; j++){
 			for (int color = 0; color < 3; color++){
@@ -563,7 +574,7 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 			}
 		}
 	}
-
+	nvtxRangePop();
 
 	//printf("Got here!\n");
 	//output = (uchar*)temp_data;
@@ -574,6 +585,7 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 	//blocks = (srcN + threadsPerBlock - 1) / threadsPerBlock;
 	offset = 0;
 
+	get_nvtAttrib("Range", 0xFF888888);
 	for (int step = 0; step < rounds; step++){
 		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
 		if (destN <= 0){
@@ -593,7 +605,7 @@ void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, i
 		cudaFree(deviceTempData);
 		offset += destN;
 	}
-
+	nvtxRangePop();
 	//uchar minThresh = 20;
 	//uchar maxThresh = 60;
 
@@ -678,7 +690,7 @@ void cudaKMeans(unsigned char* input, unsigned char* output, int srcRows, int sr
 	int count = 0;
 
 	while (!convergence[0]){
-		convergence[0] = true;
+		//convergence[0] = true; //UNDO
 		cudaMemcpy(device_convergence, convergence, sizeof(bool), cudaMemcpyHostToDevice);
 		for (int k = 0; k < k_means; k++){
 			k_count[k] = 0;

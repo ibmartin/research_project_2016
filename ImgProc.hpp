@@ -86,6 +86,7 @@ namespace img_proc{
 	kd_node* mySiftKDSearchHelp(kd_node* current, std::vector<keypoint>& keys, keypoint& search_key, int& max_search);
 	cv::Mat bump_map(int dim);
 	cv::Mat diff_count(cv::Mat image1, cv::Mat image2);
+	float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, float r_y);
 }
 
 #endif

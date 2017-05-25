@@ -63,6 +63,7 @@ namespace img_proc{
 	//		cv::Mat image: input image
 	//	Outputs a negative color image of the input
 	cv::Mat reverse(cv::Mat image){	
+		get_nvtAttrib("reverse CPU", 0xFF880000);
 		//int srcRows = image.rows;
 		//int srcCols = image.cols;
 		cv::Mat output(image.rows, image.cols, image.type());
@@ -80,6 +81,7 @@ namespace img_proc{
 			src_data += 3;
 		}
 
+		nvtxRangePop();
 		return output;
 	}
 
@@ -88,7 +90,9 @@ namespace img_proc{
 	//		double gamma: gamma correction value, gamma > 1 darkens the image, gamma < 1 brightens the image
 	//	Applies gamma correction which brightens or darkens the image based on gamma
 	cv::Mat gammaCorrection(cv::Mat image, double gamma){	
+		get_nvtAttrib("gammaCorrection CPU", 0xFF880000);
 
+		get_nvtAttrib("Setup", 0xFF000088);
 		cv::Mat output(image.rows, image.cols, image.type());
 
 		uchar* dest_data = (uchar*)output.datastart;
@@ -97,7 +101,9 @@ namespace img_proc{
 		uchar* src_end = (uchar*)image.dataend;
 
 		double gammaCorrect = 1.00 / gamma;
+		nvtxRangePop();
 
+		get_nvtAttrib("Work Loop " + std::to_string(image.rows * image.cols), 0xFF888888);
 		while (dest_data <= dest_end && src_data <= src_end){
 			double color = (double)(*(src_data));
 			uchar val = 255 * pow((color / 255.0), gammaCorrect);
@@ -105,7 +111,8 @@ namespace img_proc{
 			src_data++;
 			dest_data++;
 		}
-
+		nvtxRangePop();
+		nvtxRangePop();
 		return output;
 	}
 
@@ -178,6 +185,7 @@ namespace img_proc{
 	//		int cols: number of columns for the new image to have
 	//	Resize with linear interpolation based on 4 nearest pixels
 	cv::Mat linearResize(cv::Mat image, int rows, int cols){
+		get_nvtAttrib("linearResize GPU", 0xFF880000);
 		cv::Mat output(rows, cols, image.type());
 		uchar* src_data = (uchar*)image.datastart;
 		uchar* dest_data = (uchar*)output.datastart;
@@ -242,6 +250,7 @@ namespace img_proc{
 			}
 		}
 		//uchar temp = 1 * src_data[3 * (srcCols * (1079 + 1) + (313 + 1)) + 2];
+		nvtxRangePop();
 		return output;
 	}
 
@@ -463,7 +472,8 @@ namespace img_proc{
 	//	Applies edge detection convolution of the sobel kernel
 	//	Part of Canny edge detector.  Full functionality is not yet implemented
 	cv::Mat sobelFilter(cv::Mat image){
-
+		get_nvtAttrib("sobelFilter CPU", 0xFF880000);
+		get_nvtAttrib("Setup", 0xFF000088);
 		cv::Mat output(image.rows, image.cols, image.type());
 		double sobel_x[3][3], sobel_xn[3][3], sobel_y[3][3], sobel_yn[3][3];
 
@@ -491,7 +501,9 @@ namespace img_proc{
 		uchar* src_data = (uchar*)image.datastart;
 		uchar* fin_data = (uchar*)output.datastart;
 		double* dest_data = new double[3 * srcRows * srcCols];
+		nvtxRangePop();
 
+		get_nvtAttrib("Work Loop", 0xFF888888);
 		//Convolution of the Sobel kernel
 		for (int i = 0; i < srcRows; i++){
 			for (int j = 0; j < srcCols; j++){
@@ -525,13 +537,14 @@ namespace img_proc{
 				}
 			}
 		}
-
+		nvtxRangePop();
 
 
 		//Edge Thinning
 		//Thins out pixel values that are too weak to represent a strong edge in the original image
 		//Also strengthens strong edges
 
+		get_nvtAttrib("Edge Thinning", 0xFF888888);
 		double diff = rangeMax - rangeMin;
 		int highThresh = 60;
 		int lowThresh = 20;
@@ -552,7 +565,7 @@ namespace img_proc{
 				}
 			}
 		}
-
+		nvtxRangePop();
 		//The rest of this is part of Canny, not used right now.
 		
 		/*for (int i = 0; i < srcRows; i++){
@@ -601,7 +614,7 @@ namespace img_proc{
 
 		//delete[] angle;
 		delete[] dest_data;
-
+		nvtxRangePop();
 		return output;
 	}
 
@@ -628,6 +641,8 @@ namespace img_proc{
 
 	cv::Mat kMeans(cv::Mat image, int k_means){
 		get_nvtAttrib("kMeans CPU", 0xFF880000);
+
+		get_nvtAttrib("Setup", 0xFF000088);
 		srand(2000);
 		int srcRows = image.rows;
 		int srcCols = image.cols;
@@ -671,11 +686,13 @@ namespace img_proc{
 		}
 
 		int count = 0;
+		nvtxRangePop();
 
 		//	Main work loop.  First, the "color distances" of each pixel to the color of each main group, and re-assigns groups if necessary.
 		//	Then, if any pixels have been re-assigned, the average colors of all the groups are re-calculated based on the new assignments
+		get_nvtAttrib("Convergence Loop", 0xFF888888);
 		while (!convergence){
-			convergence = true;
+			//convergence = true;  //UNDO
 			for (int k = 0; k < k_means; k++){
 				k_count[k] = 0;
 			}
@@ -738,9 +755,10 @@ namespace img_proc{
 				}
 			}
 		}//	End of main while loop
-
+		nvtxRangePop();
 		//	Writing to output image using the last discoved group color values and the group assignment of every pixel in
 		//	the input image
+		get_nvtAttrib("Output Adjust", 0xFFFF0000);
 		for (int i = 0; i < srcRows; i++){
 			for (int j = 0; j < srcCols; j++){
 				int group = k_index[i * srcCols + j];
@@ -751,7 +769,7 @@ namespace img_proc{
 
 			}
 		}
-
+		nvtxRangePop();
 		
 		//Avoid memory leaks
 		delete[] k_colors;
@@ -1254,7 +1272,7 @@ namespace img_proc{
 		}
 		nvtxRangePop();
 
-		get_nvtAttrib("Key Culling", 0xFF000088);
+		get_nvtAttrib("Key Culling " + std::to_string(keys.size()), 0xFF000088);
 		if (debug_statements) printf("Keys Size: %d\n", keys.size());
 
 		dest_data = (uchar*)output.datastart;
@@ -1339,6 +1357,11 @@ namespace img_proc{
 				}
 			}
 
+			if (!(max_hist > 0.0)){
+				keys[key_index].filtered = true;
+				continue;
+			}
+
 			//float peaks[36] = { 0 };
 
 			for (int i = 0; i < 36; i++){
@@ -1353,8 +1376,8 @@ namespace img_proc{
 				if (max_hist != 0.0 && i != max_bin && histo[i] > histo[left] && histo[i] > histo[right] && histo[i] >= 0.8 * max_hist){
 					//peaks[i] = histo[i];
 
-					//float orientation = mySiftVertParabola(left * 10 + 5, histo[left], i * 10 + 5, histo[i], right * 10 + 5, histo[right]);
-					float orientation = i * ((M_PI * 10.0) / 180.0);
+					float orientation = mySiftVertParabola((i - 1) * 10 + 5, histo[left], i * 10 + 5, histo[i], (i + 1) * 10 + 5, histo[right]);
+					//float orientation = i * ((M_PI * 10.0) / 180.0);
 					keypoint newKey(idx, idy, oct, orientation, kindex);
 					keys.push_back(newKey);
 				}
@@ -1371,7 +1394,9 @@ namespace img_proc{
 			//key_now.angle = mySiftVertParabola(max_left * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], max_right * 10 + 5, histo[max_right]);
 			//printf("Stop: %f\n", key_now.angle);
 			//key_now.angle = max_bin * ((M_PI * 10.0) / 180.0);
-			keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+			//keys[key_index].angle = max_bin * ((M_PI * 10.0) / 180.0);
+			float angle = mySiftVertParabola((max_bin - 1) * 10 + 5, histo[max_left], max_bin * 10 + 5, histo[max_bin], (max_bin + 1) * 10 + 5, histo[max_right]);
+			keys[key_index].angle = angle;
 			//delete[] peaks;
 		}
 
@@ -1398,6 +1423,7 @@ namespace img_proc{
 		kd_node fish = mySiftKDHelp(keys);
 		nvtxRangePop();
 		nvtxRangePop();
+		//mySiftWriteKeyFile(keys);
 		return original;
 
 		//int unfiltered = 0;
@@ -1866,7 +1892,7 @@ namespace img_proc{
 
 	bool mySiftWriteKeyFile(std::vector<keypoint>& keys){
 		std::ofstream key_file;
-		key_file.open("D://School//Summer 2016//Research//gray//keys_cpu.txt");
+		key_file.open("D://School//Summer 2016//Research//mySift//keys_cpu.txt");
 
 		for (keypoint& key : keys){
 			if (!key.filtered){
@@ -2388,6 +2414,52 @@ namespace img_proc{
 
 		printf("\n\nDiff: %d\n", dcount);
 		return image1;
+	}
+
+	float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, float r_y){
+		cv::Mat_<float> mat_a = cv::Mat::zeros(3, 3, CV_32F);
+		cv::Mat_<float> mat_b = cv::Mat::zeros(3, 1, CV_32F);
+		//l_x = l_x * ((M_PI * 10.0) / 180.0); p_x = p_x * ((M_PI * 10.0) / 180.0); r_x = r_x * ((M_PI * 10.0) / 180.0);
+		//printf("Points: l_x %f, l_y %f, p_x %f, p_y %f, r_x %f, r_y %f\n", l_x, l_y, p_x, p_y, r_x, r_y);
+
+		mat_a.at<float>(0, 0) = l_x * l_x;
+		mat_a.at<float>(1, 0) = p_x * p_x;
+		mat_a.at<float>(2, 0) = r_x * r_x;
+
+		mat_a.at<float>(0, 1) = l_x;
+		mat_a.at<float>(1, 1) = p_x;
+		mat_a.at<float>(2, 1) = r_x;
+
+		mat_a.at<float>(0, 2) = 1.0;
+		mat_a.at<float>(1, 2) = 1.0;
+		mat_a.at<float>(2, 2) = 1.0;
+
+		//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(0, 0), mat_a.at<float>(0, 1), mat_a.at<float>(0, 2));
+		//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(1, 0), mat_a.at<float>(1, 1), mat_a.at<float>(1, 2));
+		//printf("[ %10.1f, %10.1f, %10.1f ]\n", mat_a.at<float>(2, 0), mat_a.at<float>(2, 1), mat_a.at<float>(2, 2));
+		//printf("\n");
+
+		mat_b.at<float>(0, 0) = l_y;
+		mat_b.at<float>(1, 0) = p_y;
+		mat_b.at<float>(2, 0) = r_y;
+
+		//printf("[ %10.6f ]\n", mat_b.at<float>(0, 0));
+		//printf("[ %10.6f ]\n", mat_b.at<float>(1, 0));
+		//printf("[ %10.6f ]\n", mat_b.at<float>(2, 0));
+		//printf("\n");
+
+		cv::Mat mat_result = cv::Mat::zeros(3, 1, CV_32F);
+		solve(mat_a, mat_b, mat_result);
+
+		float result = -mat_result.at<float>(1, 0) / (2.0 * mat_result.at<float>(0, 0));
+		if (result < 0) result += 360;
+		else if (result > 360) result -= 360;
+
+		//printf("Result: %f\n", result);
+		//getchar();
+
+		result *= M_PI / 180.0;
+		return result;
 	}
 
 }
