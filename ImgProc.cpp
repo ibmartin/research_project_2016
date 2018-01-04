@@ -9,6 +9,8 @@ namespace img_proc{
 	//The data type for colors is uchar, which is 1 Byte and ranges 0 to 255
 	//Raw values of image data can be accessed using (uchar*)image.datastart
 
+	static int FIXED = 16;
+	static int ONE = 1 << FIXED;
 	bool debug_statements = false;
 
 	//	== cv::Mat rgb2Gray(cv::Mat image) ==
@@ -305,6 +307,8 @@ namespace img_proc{
 		return output;
 	}
 
+
+
 	//	== void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma) ==
 	//		double gKernel[][]: array that will contain the descreet Gaussian operand values, hardcoded to be of size (2 * FILTER_SIZE + 1)^2.  FILTER_SIZE is a global found in ImgProc.hpp
 	//		double inputSigma: value of sigma to use to generate Gaussian operand values
@@ -336,6 +340,58 @@ namespace img_proc{
 				gKernel[(i * W) + j] /= sum;
 			}
 		}
+		//getchar();
+	}
+
+	cv::Mat makeFilter(float sigma){
+		/*cv::Mat testIn(2, 2, CV_32FC1);
+		testIn.at<float>(0, 0) = -1;
+		testIn.at<float>(0, 1) = -1;
+		testIn.at<float>(1, 0) = 1;
+		testIn.at<float>(1, 1) = 1;
+
+		cv::Mat testIn2(5, 5, CV_32FC1);
+		for (int i = 1; i <= 25; i++){
+			testIn2.at<float>(i - 1) = i;
+		}
+		cv::Mat testOut;
+		//cv::filter2D(testIn, testOut, -1, testIn,cv::Point(-1,-1),0,cv::BORDER_ISOLATED);
+		testOut = myConv2(testIn, testIn, 1);
+
+		printf("\n");
+		for (int i = 0; i < testOut.rows*testOut.cols; i++){
+			printf(" %f ", testOut.at<float>(i));
+			if ((i + 1) % testOut.cols == 0) printf("\n");
+		}
+		printf("\n");*/
+
+		int dim = floor(6 * sigma);
+		cv::Mat outFilter(1, dim, CV_32FC1);
+
+		float bound = -(dim - 1.0) / 2.0;
+		float sumh = 0.0;
+
+		for (int i = 0; i < outFilter.cols; i++){
+			float val = exp(-(bound * bound) / (2 * sigma * sigma));
+			outFilter.at<float>(0, i) = val;
+			sumh += val;
+			bound += 1.0;
+		}
+		
+
+		if (sumh != 0){
+			for (int i = 0; i < outFilter.cols; i++){
+				outFilter.at<float>(0, i) = outFilter.at<float>(0, i) / sumh;
+			}
+		}
+
+		//printf("[");
+		for (int i = 0; i < outFilter.cols; i++){
+			//printf(" %f ", outFilter.at<float>(0, i));
+		}
+		//printf("] \n");
+
+		return outFilter;
 	}
 
 	//	== cv::Mat gaussianFilter(cv::Mat image, double sigma) ==
@@ -430,6 +486,160 @@ namespace img_proc{
 
 		nvtxRangePop();//fgaussianFilter CPU
 		return output;
+	}
+
+	cv::Mat fGaussianFilterSep(cv::Mat image, float sigma){
+		int srcRows = image.rows, srcCols = image.cols;
+
+		cv::Mat output = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+		cv::Mat temp = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+
+		cv::Mat filter = makeFilter(sigma);
+
+		temp = myConv2(image, filter, 0);
+		output = myConv2(temp, myTranspose(filter), 0);
+
+		return output;
+	}
+
+	cv::Mat myConv2(cv::Mat large, cv::Mat small, int mode = 0){
+		//mode = 0 is 'same'
+		//mode = 1 is 'full'
+		if (small.rows > large.rows || small.cols > large.cols){
+			return large;
+		}
+
+		int rows = large.rows + small.rows - 1;
+		int cols = large.cols + small.cols - 1;
+		int stRow, sdRow, stCol, sdCol;
+		int mtRow, mdRow, mtCol, mdCol;
+		int ks, km, ls, lm;
+		int k, l, m, n;
+		cv::Mat temp = cv::Mat::zeros(rows,cols,CV_32FC1);
+
+		for (int i = 0; i < temp.rows; i++){
+			for (int j = 0; j < temp.cols; j++){
+				float val = 0;
+				int value = 0;
+
+				stRow = i - small.rows + 1;
+				sdRow = std::max(0, stRow);
+				stCol = j - small.cols + 1;
+				sdCol = std::max(0, stCol);
+				mtRow = stRow + small.rows;
+				mdRow = std::min(large.rows, stRow + small.rows);
+				mtCol = stCol + small.cols;
+				mdCol = std::min(large.cols, stCol + small.cols);
+				ks = sdRow - stRow; km = small.rows - (mtRow - mdRow);
+				ls = sdCol - stCol; lm = small.cols - (mtCol - mdCol);
+
+				int m_end = sdRow + (km - ks - 1);
+				int n_end = sdCol + (lm - ls - 1);
+				int lrg_end = m_end * large.cols + n_end;
+
+				for (k = ks, m = sdRow; k < km; k++, m++){
+					for (l = ls, n = sdCol; l < lm; l++, n++){
+						//float largeval = large.at<float>(m, n);
+						//float smallval = small.at<float>(k, l);
+						//val += large.at<float>(m,n) * small.at<float>(small.rows - k - 1, small.cols - l - 1);
+						value += (large.at<float>(m, n) * small.at<float>(small.rows - k - 1, small.cols - l - 1)) * ONE;
+					}
+				}
+
+
+				//temp.at<float>(i, j) = val;
+				temp.at<float>(i, j) = value / ONE;
+			}
+		}
+
+		if (mode == 0){
+			int top = small.rows / 2, bottom = (small.rows - 1) / 2, left = small.cols / 2, right = (small.cols - 1) / 2;
+			return myTrim(temp, top, bottom, left, right);
+		}
+		return temp;
+
+	}
+
+	cv::Mat myTranspose(cv::Mat input){
+		cv::Mat output(input.cols, input.rows, input.type());
+
+		for (int i = 0; i < output.rows; i++){
+			for (int j = 0; j < output.cols; j++){
+				output.at<float>(i, j) = input.at<float>(j, i);
+			}
+		}
+		return output;
+	}
+
+	cv::Mat myTrim(cv::Mat input, int top, int bottom, int left, int right){
+		int rows = input.rows - top - bottom;
+		int cols = input.cols - left - right;
+		cv::Mat output(rows, cols, input.type());
+
+		for (int i = 0; i < rows; i++){
+			for (int j = 0; j < cols; j++){
+				output.at<float>(i, j) = input.at<float>(i + top, j + left);
+			}
+		}
+		return output;
+	}
+
+	cv::Mat myElemScalar(cv::Mat input, float scalar, int mode = 0){
+		//mode == 0 is multiply
+		//mode = -1 is divide
+		//mode = 1 is add
+		cv::Mat output(input.rows, input.cols, input.type());
+		for (int i = 0; i < input.rows; i++){
+			for (int j = 0; j < input.cols; j++){
+
+				if (mode == 0){
+					output.at<float>(i, j) = scalar * input.at<float>(i, j);
+				}
+				else if (mode == -1){
+					output.at<float>(i, j) = scalar / input.at<float>(i, j);
+				}
+				else if (mode == 1){
+					output.at<float>(i, j) = scalar + input.at<float>(i, j);
+				}
+
+			}
+		}
+		return output;
+	}
+
+	cv::Mat myElemMat(cv::Mat mat1, cv::Mat mat2, int mode = 0){
+		//mode == 0 is multiply
+		//mode == -1 is divide
+		//mode == 1 is add
+		//mode == 2 is subtract
+		if (mat1.rows != mat2.rows || mat1.cols != mat2.cols){
+			printf("Error: myElemMat\n");
+			getchar();
+			return mat1;
+		}
+		cv::Mat output(mat1.rows, mat1.cols, mat1.type());
+
+		for (int i = 0; i < output.rows; i++){
+			for (int j = 0; j < output.cols; j++){
+				
+				if (mode == 0){
+					output.at<float>(i, j) = mat1.at<float>(i, j) * mat2.at<float>(i, j);
+				}
+				else if (mode == -1){
+					output.at<float>(i, j) = mat1.at<float>(i, j) / mat2.at<float>(i, j);
+				}
+				else if (mode == 1){
+					output.at<float>(i, j) = mat1.at<float>(i, j) + mat2.at<float>(i, j);
+				}
+				else if (mode == 2){
+					output.at<float>(i, j) = mat1.at<float>(i, j) - mat2.at<float>(i, j);
+				}
+
+			}
+		}
+
+		return output;
+
 	}
 
 	//	== float* fGaussianFilter(float* image, double sigma, int srcRows, int srcCols) ==
@@ -744,10 +954,9 @@ namespace img_proc{
 			for (int i = 0; i < srcRows; i++){
 				for (int j = 0; j < srcCols; j++){
 					int group = k_index[i * srcCols + j];
+					int group_count = k_count[group];
 					for (int color = 0; color < 3; color++){
 						float src_val = src_data[3 * (i * srcCols + j) + color];
-						int group_count = k_count[group];
-
 						float val = src_val / group_count;
 						k_colors[3 * group + color] += val;
 					}
@@ -771,6 +980,147 @@ namespace img_proc{
 		}
 		nvtxRangePop();
 		
+		//Avoid memory leaks
+		delete[] k_colors;
+		delete[] k_index;
+		delete[] k_count;
+
+		nvtxRangePop();
+		return output;
+	}
+
+	cv::Mat kMeansFixed(cv::Mat image, int k_means){
+		get_nvtAttrib("kMeansFixed CPU", 0xFF880000);
+
+		get_nvtAttrib("Setup", 0xFF000088);
+		srand(2000);
+		int srcRows = image.rows;
+		int srcCols = image.cols;
+		cv::Mat output(srcRows, srcCols, image.type());
+		uchar* src_data = (uchar*)image.datastart;
+		uchar* dest_data = (uchar*)output.datastart;
+
+		//	For now, limited to max of 256 groups
+		//	More than this would be excessive
+		if (k_means > 256){
+			printf("Error: Max number of groups exceeded (256)\n");
+			exit(-1);
+		}
+
+		//	Data structures that hold information on color groups
+		//	k_colors holds the values of color channels for each group
+		//	k_index holds the group number for every pixel in the input image
+		//	k_count holds the total number of pixels assigned to each color group
+		//float* k_colors = new float[3 * k_means];
+		int* k_colors = new int[3 * k_means];
+		uchar* k_index = new uchar[srcRows * srcCols];
+		int* k_count = new int[k_means];
+
+		//	Choosing random pixels to start groups with
+		for (int pix = 0; pix < k_means; pix++){
+			int i = rand() % srcRows;
+			int j = rand() % srcCols;
+
+			for (int color = 0; color < 3; color++){
+				k_colors[3 * pix + color] = src_data[3 * (i * srcCols + j) + color] * ONE;
+			}
+
+		}
+
+		//	When this is true at the end of the next while loop, no pixels have changed their group assignment
+		//	and the algorithm is complete.
+		bool convergence = false;
+
+		//	Initializing k_index to all zeroes to start
+		for (int k = 0; k < srcRows * srcCols; k++){
+			k_index[k] = 0;
+		}
+
+		int count = 0;
+		nvtxRangePop();
+
+		//	Main work loop.  First, the "color distances" of each pixel to the color of each main group, and re-assigns groups if necessary.
+		//	Then, if any pixels have been re-assigned, the average colors of all the groups are re-calculated based on the new assignments
+		get_nvtAttrib("Convergence Loop", 0xFF888888);
+		while (!convergence){
+			//convergence = true;  //UNDO
+			for (int k = 0; k < k_means; k++){
+				k_count[k] = 0;
+			}
+			for (int i = 0; i < srcRows; i++){
+				for (int j = 0; j < srcCols; j++){
+
+					//	Data order of opencv Mat is BGR, backwards of RGB
+					float b2 = src_data[3 * (i * srcCols + j)];
+					float g2 = src_data[3 * (i * srcCols + j) + 1];
+					float r2 = src_data[3 * (i * srcCols + j) + 2];
+					float min_dist = std::numeric_limits<float>::max();
+					uchar new_index;
+
+					for (int group = 0; group < k_means; group++){
+						float b1 = (float)k_colors[3 * group] / ONE;
+						float g1 = (float)k_colors[3 * group + 1] / ONE;
+						float r1 = (float)k_colors[3 * group + 2] / ONE;
+
+						float dist = color_distance(r1, g1, b1, r2, g2, b2);	//	Distance from the color of this pixel to each group
+						if (dist < min_dist){
+							min_dist = dist;
+
+							new_index = group;
+						}
+					}
+					if (k_index[i * srcCols + j] != new_index){
+						k_index[i * srcCols + j] = new_index;
+
+						convergence = false;	//	If a pixel has changed its group, the algorithm has not converged
+					}
+					k_count[new_index] += 1;
+				}
+			}
+
+			if (count == 200){			// <-- Temporary hard coding of 200 runs for testing purposes
+				break;					// <-- Comment out these lines for original algorithm
+			}							// <--
+			count++;
+			//if (convergence)			// <-- Uncomment these two lines for the original algorithm
+			//	break;					// <--
+
+			//	Re-setting the color values to zero, so we can accumulate averages in one pass
+			for (int k = 0; k < 3 * k_means; k++){
+				k_colors[k] = 0;
+			}
+
+			//	Take color values of pixels in original image (float to avoid truncation), divide by the number of
+			//	pixels assigned to this pixel's designated group, add to total
+			for (int i = 0; i < srcRows; i++){
+				for (int j = 0; j < srcCols; j++){
+					int group = k_index[i * srcCols + j];
+					int group_count = k_count[group];
+					for (int color = 0; color < 3; color++){
+						int src_val = src_data[3 * (i * srcCols + j) + color] * ONE;
+						int val = src_val / (group_count);
+						k_colors[3 * group + color] += val;
+					}
+
+				}
+			}
+		}//	End of main while loop
+		nvtxRangePop();
+		//	Writing to output image using the last discoved group color values and the group assignment of every pixel in
+		//	the input image
+		get_nvtAttrib("Output Adjust", 0xFFFF0000);
+		for (int i = 0; i < srcRows; i++){
+			for (int j = 0; j < srcCols; j++){
+				int group = k_index[i * srcCols + j];
+
+				for (int color = 0; color < 3; color++){
+					dest_data[3 * (i * srcCols + j) + color] = (uchar)(k_colors[3 * group + color] / ONE);
+				}
+
+			}
+		}
+		nvtxRangePop();
+
 		//Avoid memory leaks
 		delete[] k_colors;
 		delete[] k_index;
@@ -899,6 +1249,86 @@ namespace img_proc{
 		return output;
 	}*/
 
+	cv::Mat depthFromStereo(cv::Mat image_l, cv::Mat image_r, float fl, float fr, float baseline){
+		image_l = frgb2Gray(image_l);
+		image_r = frgb2Gray(image_r);
+		int window = 20;
+		float bound = window / 2;
+		int srcRows = image_l.rows, srcCols = image_l.cols;
+
+		//cv::Mat output(srcRows, srcCols, image_l.type());
+		cv::Mat output = cv::Mat::zeros(srcRows, srcCols, CV_32FC1);
+		float* left_data = (float*)image_l.datastart;
+		float* right_data = (float*)image_r.datastart;
+		float* out_data = (float*)output.datastart;
+
+		float cx_l = 0, cx_r = 0, cy_l = 0, cy_r = 0;
+		fl = 4412.147; fr = 4412.147;
+		baseline = 144.174;
+
+		cx_l = 1283.781; cx_r = 1406.974;
+		cy_l = 994.694; cy_r = 994.694;
+
+		float z_min = 1000000000.0;
+		float z_max = 0.0;
+
+		float doffs = cx_r - cx_l;
+
+		for (int li = bound; li < srcRows - bound; li++){
+
+			for (int lj = bound; lj < srcCols - bound; lj++){
+
+				int d = std::min(lj - (int)bound, 250), d_min = 0;
+				float min_cost = 1000000000;
+
+				for (; d > (lj - srcCols - bound); d-= 1){
+					int rj = lj - d;
+
+					float t_cost = 0.0;
+					for (int u = li - bound; u < li + bound; u++){
+						for (int v = lj - bound; v < lj + bound; v++){
+							//t_cost += pow(image_l.at<float>(u, v) - image_r.at<float>(u, v - d), 2);
+							t_cost += pow(left_data[(u * srcCols) + v] - right_data[(u * srcCols) + (v - d)], 2);
+						}
+					}
+
+					if (t_cost <= min_cost){
+						min_cost = t_cost;
+						d_min = d;
+					}
+				}
+
+				float z = (fl * baseline) / ((float)abs(d_min) + doffs);
+				//output.at<float>(li, lj) = z;
+				out_data[li * srcCols + lj] = z;
+
+				if (z < z_min){
+					z_min = z;
+				}
+				else if (z > z_max && z < 1000000000.0){
+					z_max = std::min(z, (float)1000000000.0);
+				}
+				//printf("Z: %f\n", z);
+			}
+
+		}
+
+		printf("Z Min: %f; Z Max: %f\n", z_min, z_max);
+
+		for (int i = 0; i < srcRows; i++){
+			for (int j = 0; j < srcCols; j++){
+				float temp_z = out_data[i * srcCols + j];
+				if (temp_z > z_max) temp_z = z_max;
+
+				temp_z = 255.0 - ((temp_z - z_min) * 255.0 / (z_max - z_min));
+				out_data[i * srcCols + j] = temp_z;
+				//printf("temp_z: %f\n", temp_z);
+			}
+		}
+
+		return output;
+	}
+
 	//	== cv::Mat mySift(cv::Mat image) ==
 	//		cv::Mat image: Input image
 	//	Applies Scale Invariant Feature Transform to the input image in order to identify features that can be used for 
@@ -917,7 +1347,7 @@ namespace img_proc{
 
 		int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
 		int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
-		int mark_dim = 2;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
+		int mark_dim = 1;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
 
 		//	The first step is to scale up the input image by a factor of 2 in both dimensions, then apply a gaussian blur with sigma = 1.6
 		//	Scaling up the input provides more keypoints and approximates a blur with sigma = 1.0, assuming the original image is roughly sigma = 0.5 which is the threshold for noise
@@ -925,23 +1355,28 @@ namespace img_proc{
 		float sigma = 1.6;
 		//cv::Mat original = image;
 
-		cv::Mat image = linearResize(original, original.rows * 2, original.cols * 2);
-		image = frgb2Gray(image);
-		//image = flinearResize(image, image.rows * 2, image.cols * 2);
-		//image = fgaussianFilter(image, sigma);
+		//cv::Mat image = linearResize(original, original.rows * 2, original.cols * 2);
+		cv::Mat image = frgb2Gray(original);
+		//image = fgaussianFilter(image, 1.0);
+		image = flinearResize(image, image.rows * 2, image.cols * 2);
+		cv::Mat temp_image;
+		//cv::copyMakeBorder(image, temp_image, 1, 1, 1, 1, cv::BORDER_REPLICATE);
+		temp_image = image;
 
 		//image = linearResize(image, image.rows * 2, image.cols * 2);
 		//image = gaussianFilter(image, sigma);
 
 		uchar scales = 3;	//	Lowe found 3 to be best
-		uchar octaves = 4;	//	4 or 5 octaves is the standard
+		uchar octaves = 1;	//	4 or 5 octaves is the standard
 		int region = 4;
 		int srcRows = image.rows;
 		int srcCols = image.cols;
 
 		//	In one octave, a blurred image is related to the previous image by a factor of 2^(1/scales), see SIFT 2004 page 7
 		float k = pow(2.0, (1.0 / (float)scales));
+		//float k = pow(2.0, 0.5); //K_VAL HERE
 		int s = scales + 3;
+		int slevel = s - 1;
 
 		int destRows, destCols;
 
@@ -979,172 +1414,151 @@ namespace img_proc{
 		int gauss_exp = 0;
 
 		//	Main work loop, builds each octave, but also identifies possible keypoints before moving to next octave
-		
 		for (int oct = 0; oct < octaves; oct++){
+			printf("Oct %d\n", oct);
+			int octa = oct + 1;
 			get_nvtAttrib("Octave " + std::to_string(oct), 0xFF888888);
 			std::vector<cv::Mat> blur_img;
 			std::vector<cv::Mat> dog_img;
+			curRows = temp_image.rows;
+			curCols = temp_image.cols;
 
-			//cv::Mat current = image;//CHANGED
-			//blur_img.push_back(image);//CHANGED
-			cv::Mat current = fgaussianFilter(image, pow(k, gauss_exp) * sigma);
-			//printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
+			cv::Mat current = temp_image;
+			//if (oct == 0){ current = fGaussianFilterSep(temp_image, sigma); }
 			blur_img.push_back(current);
-			gauss_exp += 1;
-			//cv::Mat origin = image.clone();
-			//std::string img_num = "_" + std::to_string(oct) + "_" + std::to_string(0);
-			//std::string full_img = debug_Path + img_name + img_num + ftype;
-			//imwrite(full_img, current, compression_params);
 
 			get_nvtAttrib("Scale Space", 0xFF000088);
 			for (int step = 1; step < s; step++){
-				//cv::Mat next = fgaussianFilter(image, k);	//CHANGED	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
-				cv::Mat next = fgaussianFilter(image, pow(k, gauss_exp) * sigma);	//	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
+				printf("  Step %d: ", step);
+				float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+				printf(" %f\n", temp_scale);
+				//	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
+				current = temp_image;
+				//if (oct == 0 && step == 1){ current = fGaussianFilterSep(temp_image, sigma); }
+				//cv::Mat next = cv::Mat::zeros(curRows, curCols, CV_32FC1);// = fGaussianFilterSep(current, pow(k, gauss_exp) * sigma);
+				cv::Mat next = fGaussianFilterSep(temp_image, temp_scale);
 				cv::Mat dog = cv::Mat::zeros(curRows,curCols,CV_32FC1);
 				blur_img.push_back(next);
-				//printf("Gauss_exp: %f\n", (pow(k, (float)gauss_exp) * sigma) - (pow(k, (float)gauss_exp - 1) * sigma));
 
 				float* curr_data = (float*)current.data;
 				float* next_data = (float*)next.data;
 				float* dog_data = (float*)dog.data;
-				//printf("Step: %d\n", current.step);
-				//getchar();
-				//printf("Cont: %d\n", dog.step1());
 				for (int i = 0; i < curRows ; i++){
 					for (int j = 0; j < curCols; j++){
-						//int idx = 3 * (i * curCols + j);
-						//getchar();
-						int idx = i * curCols + j;
+						int idx = (i * curCols) + j;
 
-						//printf("Next: %f, Curr: %f\n", next_data[idx], curr_data[idx]);
-						//printf("Diff: %f\n", next_data[idx] - curr_data[idx]);
-
-						float val = 0.0 + (next_data[idx] - curr_data[idx]);// + 127;// Data is stored as gray to allow for presentable data.  Adding 127 reduces risk of wrap-around error (range is 0 - 255).
+						float val = next_data[idx] - curr_data[idx];// + 127;// Data is stored as gray to allow for presentable data.  Adding 127 reduces risk of wrap-around error (range is 0 - 255).
 						
 						dog_data[idx] = val;
-						//dog_data[idx + 1] = val;
-						//dog_data[idx + 2] = val;
 					}
 				}
-
-				
-				//printf("Bogeys: %f\n", (float)(bogeys) / (curRows * curCols));
-				//getchar();
-				//std::string img_num = "_" + std::to_string(oct) + "_" + std::to_string(step + 1);
-				//std::string full_img = debug_Path + img_name + img_num + ftype;
-				//imwrite(full_img, next, compression_params);
-
+				//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((oct + 1) * 10 + (step)) + "_c.png", dog, compression_params);
 				dog_img.push_back(dog);
-				current = next;
+				//current = next;
+				if (step == s - 1){
+
+				}
 				gauss_exp++;
 			}
 			nvtxRangePop();
 
+
+			
 			//	Keypoint calculation.  Refer to SIFT papers for more information
 			get_nvtAttrib("Keypoints", 0xFF000088);
+			printf("Keypoints\n");
 			for (int step = 1; step < s - 2; step++){
 				int temp_exp = gauss_exp - s + (step);
 				//printf("temp_exp: %d\n", temp_exp);
-				float temp_scale = ((pow(k, temp_exp) * sigma) - (pow(k, temp_exp - 1) * sigma)) / 2 + (pow(k, temp_exp - 1) * sigma);
+				float temp_scale = ((pow(k, temp_exp) * sigma) - (pow(k, temp_exp - 1) * sigma)) / 2.0 + (pow(k, temp_exp - 1.0) * sigma);
 
-				cv::Mat& prev = dog_img[step - 1];
-				cv::Mat& curr = dog_img[step];
-				cv::Mat& next = dog_img[step + 1];
+				cv::Mat prev = dog_img[step - 1];
+				cv::Mat curr = dog_img[step + 0];
+				cv::Mat next = dog_img[step + 1];
 				float* prev_data = (float*)dog_img[step - 1].datastart;
-				float* curr_data = (float*)dog_img[step].datastart;
+				float* curr_data = (float*)dog_img[step + 0].datastart;
 				float* next_data = (float*)dog_img[step + 1].datastart;
+				
 
-				for (int i = 1; i < curRows - 2; i++){
+				for (int i = 1; i < curRows - 1; i++){
 					for (int j = 1; j < curCols - 1; j++){
 						//int idx = 3 * (i * curCols + j);
 						int idx = (i * curCols + j);
 						float val = curr_data[idx];
 						//float val = curr.ptr<float>(i)[j];
 						//float val = curr.at<float>(i,j);
-						float minval = std::numeric_limits<float>::max();
-						float maxval = std::numeric_limits<float>::min();
 
-						int lc = 0;
-						int mc = 0;
-						int ec = 0;
-						int counter = 0;
 						float val_c = 0;
+						float val_min = val;
+						float val_max = val;
+						int counter = 0;
 
-						for (int k = -1; k <= 1; k++){
+						/*for (int k = -1; k <= 1; k++){
 							for (int l = -1; l <= 1; l++){
-								val_c = prev_data[idx + (k * curCols + l)] - val;
-								if (val_c > 0) counter += 1;
-								else if (val_c < 0) counter -= 1;
+								val_c = prev_data[idx + (k * curCols + l)];
+								if (val_c < val_min) val_min = val_c;
+								if (val_c > val_max) val_max = val_c;
 
-								val_c = curr_data[idx + (k * curCols + l)] - val;
-								if (val_c > 0) counter += 1;
-								else if (val_c < 0) counter -= 1;
+								val_c = curr_data[idx + (k * curCols + l)];
+								if (val_c < val_min) val_min = val_c;
+								if (val_c > val_max) val_max = val_c;
 
-								val_c = next_data[idx + (k * curCols + l)] - val;
-								if (val_c > 0) counter += 1;
-								else if (val_c < 0) counter -= 1;
+								val_c = next_data[idx + (k * curCols + l)];
+								if (val_c < val_min) val_min = val_c;
+								if (val_c > val_max) val_max = val_c;
 							}
 						}
 
-						/*for (int ii = i - 1; ii <= i + 1; ii++){
-							for (int jj = j - 1; jj <= j + 1; jj++){
-								int idy = (ii * curCols + jj);
-								//float tval = prev.ptr<float>(ii)[jj];
-								float tval = prev.at<float>(ii,jj);
-								if (tval < minval){ minval = tval; }
-								else if (tval > maxval){ maxval = tval; }
+						//printf("I: %d, J: %d, V: %f, Vmin: %f, Vmax: %f, ", i, j, val, val_min, val_max);
 
-								if (tval < val){ lc++; }
-								else if (tval > val){ mc++; }
-								else if (tval == val){ ec++; }
-							}
-						}
-						for (int ii = i - 1; ii <= i + 1; ii++){
-							for (int jj = j - 1; jj <= j + 1; jj++){
-								if (ii == i && jj == j)	//	Do not include current sample point, this is important
-									continue;
-								int idy = (ii * curCols + jj);
-								//float tval = curr.ptr<float>(ii)[jj];
-								float tval = curr.at<float>(ii, jj);
-								if (tval < minval){ minval = tval; }
-								else if (tval > maxval){ maxval = tval; }
-
-								if (tval < val){ lc++; }
-								else if (tval > val){ mc++; }
-								else if (tval == val){ ec++; }
-							}
-						}
-						for (int ii = i - 1; ii <= i + 1; ii++){
-							for (int jj = j - 1; jj <= j + 1; jj++){
-								int idy = (ii * curCols + jj);
-								//float tval = next.ptr<float>(ii)[jj];
-								float tval = next.at<float>(ii, jj);
-								if (tval < minval){ minval = tval; }
-								else if (tval > maxval){ maxval = tval; }
-
-								if (tval < val){ lc++; }
-								else if (tval > val){ mc++; }
-								else if (tval == val){ ec++; }
+						if (val <= val_min || val >= val_max) {
+							//printf("Yes============================================================\n");
+							keypoint newKey(i, j, oct, 0, step);
+							//printf("I: %d, J: %d, V: %f\n", i, j, val);
+							newKey.scale = temp_scale;
+							newKey.posy = ((float)i) / curRows;
+							newKey.posx = ((float)j) / curCols;
+							keys.push_back(newKey);
+							key_count++;
+							counter++;
+							if (counter >= 5){
+								//printf("Hold+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++");
+								//getchar();
+								counter = 0;
 							}
 						}*/
 
-						//if (val < additive){
-							//printf("Val: %f\n", val);
-							//getchar();
-						//}
-						//if (val < minval || val > maxval){
-						//if ((lc == 26 || mc == 26)){
-						if (abs(counter) == 26) {
+						for (int k = -1; k <= 1; k++){
+							for (int l = -1; l <= 1; l++){
+								val_c = prev_data[idx + (k * curCols) + l] - val;
+								if (val_c > 0) counter += 1;
+								else if (val_c < 0) counter -= 1;
+
+								val_c = curr_data[idx + (k * curCols) + l] - val;
+								if (val_c > 0) counter += 1;
+								else if (val_c < 0) counter -= 1;
+
+								val_c = next_data[idx + (k * curCols) + l] - val;
+								if (val_c > 0) counter += 1;
+								else if (val_c < 0) counter -= 1;
+							}
+						}
+
+						//printf("I: %d, J: %d, V: %f, Vmin: %f, Vmax: %f, ", i, j, val, val_min, val_max);
+
+						if (abs(counter) == 26){
+							//printf("Yes============================================================\n");
 							keypoint newKey(i, j, oct, 0, step);
+							//printf("I: %d, J: %d, V: %f\n", i, j, val);
 							newKey.scale = temp_scale;
+							newKey.posy = ((float)i) / curRows;
+							newKey.posx = ((float)j) / curCols;
 							keys.push_back(newKey);
 							key_count++;
-							//printf("min: %f, val: %f, max: %f\n", minval, val, maxval);
-							//printf("lc: %d, ec: %d, mc: %d\n",lc,ec,mc);
 						}
-						//else{
-							
-						//}
+						else{
+							//printf("No\n");
+						}
 
 					}
 				}
@@ -1156,14 +1570,15 @@ namespace img_proc{
 			//curCols = srcCols;
 
 			//	Build full Difference-of-Gaussian image for presentation.  Not part of true algorithm, but good for discussions.
-			/*if (full_dog == 1){
+			if (full_dog == 1){
+
 				for (int i = 0; i < curRows; i++){
 					for (int j = 0; j < curCols; j++){
-						for (int color = 0; color < 3; color++){
-							int idx_i = 3 * (i * curCols + j) + color;
-							int idx_o = 3 * (i * destCols + (j + offset)) + color;
+						for (int color = 0; color < 1; color++){
+							int idx_i = (i * curCols + j) + color;
+							int idx_o = 3 * (i * destCols + (j + offset)) + 1;
 
-							dest_data[idx_o] = src_data[idx_i];
+							//dest_data[idx_o] = src_data[idx_i];
 						}
 					}
 				}
@@ -1173,15 +1588,17 @@ namespace img_proc{
 				for (int step = 0; step < s - 1; step++){
 
 					cv::Mat dog = dog_img[step];
-					uchar* dog_data = (uchar*)dog.datastart;
+					cv::Mat blr = blur_img[step];
+					float* dog_data = (float*)dog.datastart;
+					float* blr_data = (float*)blr.datastart;
 
 					for (int i = 0; i < curRows; i++){
 						for (int j = 0; j < curCols; j++){
-							int idx_i = 3 * (i * curCols + j);
+							int idx_i = (i * curCols + j);
 							int idx_o = 3 * (i * destCols + (j + offset));
 							
 							for (int color = 0; color < 3; color++){
-								dest_data[idx_o + color] = dog_data[idx_i + color];
+								dest_data[idx_o + color] = dog_data[idx_i] + 0;
 							}
 						}
 					}
@@ -1189,15 +1606,17 @@ namespace img_proc{
 
 				}
 				dest_data += 3 * curRows * destCols;
-			}*/
-
-			//image = blur_img[s - 2];//CHANGED
-			//image = directResize(image, image.rows / 2, image.cols / 2);//CHANGED
-			curRows = curRows / 2;
-			curCols = curCols / 2;
+			}
+			
+			printf("  tRows: %d, tCols: %d\n", temp_image.rows, temp_image.cols);
+			image = current;// (cv::Rect(1, 1, current.cols - 2, current.rows - 2));
+			//image = myTrim(current, 1, 1, 1, 1);
 			image = fdirectResize(image, image.rows / 2, image.cols / 2);
-			src_data = (float*)image.datastart;
+			//cv::copyMakeBorder(image, temp_image, 1, 1, 1, 1, cv::BORDER_REPLICATE);
+			temp_image = image;
 
+			src_data = (float*)image.datastart;
+			//printf("Fish3\n");
 			dog_oct.push_back(dog_img);
 			blur_oct.push_back(blur_img);
 			gauss_exp -= 2;
@@ -1205,7 +1624,9 @@ namespace img_proc{
 		}	//	End of main work loop
 		
 
-		//printf("Keys Size: %d\n", key_count);
+
+
+		printf("Keys Size: %d\n", key_count);
 		
 		//mySiftWriteKeyFile(keys);
 
@@ -1277,13 +1698,22 @@ namespace img_proc{
 
 		dest_data = (uchar*)output.datastart;
 
+		mySiftKeyCull(keys);
+		printf("Fish\n");
 
 		//Edge Responses goes here
-		mySiftEdgeResponses(dog_oct, keys);
+		mySiftEdgeResponsesNew(dog_oct, keys);
+
+
+		//mySiftEdgeResponses(dog_oct, keys);
+		printf("Edge\n");
+		printf("Size before: %d\n", keys.size());
+		mySiftKeyCull(keys);
+		printf("Size after: %d\n", keys.size());
 
 		int unfiltered = 0;
 		std::vector<keypoint>::iterator iter;
-		for (iter = keys.begin(); iter != keys.end();){
+		/*for (iter = keys.begin(); iter != keys.end();){
 			if ((*iter).filtered){
 				//iter = keys.erase(iter);
 				iter++;
@@ -1292,16 +1722,15 @@ namespace img_proc{
 				unfiltered++;
 				iter++;
 			}
-		}
+		}*/
 
 		key_count = keys.size();
 
-		if (debug_statements) printf("Unfiltered: %d\n", unfiltered);
-		mySiftKeyCull(keys);
+		//mySiftKeyCull(keys);
 		nvtxRangePop();
 
 		get_nvtAttrib("Or Assign", 0xFF888888);
-		if(debug_statements) printf("Orientation Assignment\n");
+		printf("Orientation Assignment\n");
 
 		//Orientation assignment
 		//int region = 4;
@@ -1420,11 +1849,11 @@ namespace img_proc{
 		printf("Size after: %d\n", keys.size());
 
 		get_nvtAttrib("KD Tree Build", 0xFF888888);
-		kd_node fish = mySiftKDHelp(keys);
+		//kd_node fish = mySiftKDHelp(keys);
 		nvtxRangePop();
-		nvtxRangePop();
+		//nvtxRangePop();
 		//mySiftWriteKeyFile(keys);
-		return original;
+		//return original;
 
 		//int unfiltered = 0;
 		/*key_index = 0;
@@ -1462,18 +1891,19 @@ namespace img_proc{
 		//kd_node fish = mySiftKDHelp(keys);
 
 
-		printf("\n");
+		/*printf("\n");
 		std::vector<keypoint> temp_keys;
 		std::string file_name = "D://School//Summer 2016//Research//mySift//keys_in.txt";
 
 		if (!mySiftReadKeyFile(temp_keys, file_name)){
 			printf("Error reading given file: %s\n", file_name);
 			return output;
-		}
+		}*/
 
 		//kd_node* kd_final = mySiftKDSearch(fish,keys,temp_keys[0]);
 		//kd_node* kd_final = mySiftKDIterSearch(&fish, keys, temp_keys[0]);
 		
+		key_count = keys.size();
 
 		//	DoG keypoint indicator drawing
 		if (full_dog == 1){
@@ -1493,7 +1923,7 @@ namespace img_proc{
 				int col_off = (kindex + 1) * rmult * srcCols;
 
 				//cvCircle(dest_data, (idx + col_off, idy + row_off), mark_dim, (255, 0, 0), 2, 8, 0);
-				cv::circle(output, cv::Point(idx + col_off, idy + row_off), mark_dim, cv::Scalar(0, 0, 255), 2, 8, 0);
+				cv::circle(output, cv::Point(idy + col_off, idx + row_off), mark_dim, cv::Scalar(0, 0, 255), 2, 8, 0);
 
 				key_index++;
 			}
@@ -1503,7 +1933,7 @@ namespace img_proc{
 			output = original;
 			key_index = 0;
 			while (key_index < key_count){
-				keypoint& key_now = keys[key_index];
+				keypoint key_now = keys[key_index];
 				if (key_now.filtered){
 					key_index++;
 					continue;
@@ -1511,18 +1941,23 @@ namespace img_proc{
 
 				int idx = key_now.idy, idy = key_now.idx;
 				int oct = key_now.oct, kindex = (int)key_now.index;
+				//printf(" %d:%d ", oct, kindex);
 
 				float mult = pow(2, oct - 1);
 
 				//cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim, cv::Scalar(0, 0, 255), 2, 8, 0);
 
 				//printf("Angle: %f\n",key_now.angle);
-				float size = 10 + (5 * mark_dim * ((2 * oct) * (k * (kindex -1))));
+				//float size = 10 + (5 * mark_dim * ((10 * oct) * (k * (kindex -1))));
+				float size = 10 + (5 * mark_dim * ((10 * oct)));
 				int newi = (idx * mult) + (sin(key_now.angle) * size);
 				int newj = (idy * mult) + (cos(key_now.angle) * size);
 
 				//if (newi >= 0 && newi <= srcRows / 2 - 1 && newj >= 0 && newj <= srcCols / 2 - 1){
-				cv::arrowedLine(output, cv::Point(idx * mult, idy * mult), cv::Point(newi, newj), cv::Scalar(0, 0, 255), 1, 8, 0);
+				//cv::arrowedLine(output, cv::Point(idx * mult, idy * mult), cv::Point(newi, newj), cv::Scalar(0, 0, 255), 1, 8, 0);
+
+				cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim * (oct + 1), cv::Scalar(0, 0, 255), 1, 8, 0);
+				//cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim, cv::Scalar(0, 0, 255), 1, 8, 0);
 				//}
 
 
@@ -1532,20 +1967,81 @@ namespace img_proc{
 
 
 		//printf("Keys: %d\n", key_count);
+		nvtxRangePop();
 
-		for (int oct = 0; oct < octaves; oct++){
-			for (int step = 0; step < s; step++){
-				delete[] or_mag_oct[oct][step];
+		return output;
+	}
+
+	void mySiftEdgeResponsesNew(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
+		std::vector<int> compression_params;
+		compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+		compression_params.push_back(9);
+		float data[4] = { -1, -1, 1, 1};
+		cv::Mat der_y = cv::Mat(2, 2, CV_32FC1, data);
+		//std::cout << der_y << std::endl;
+		cv::Mat sder_y = myConv2(der_y, der_y, 1);
+		//std::cout << sder_y << std::endl;
+		printf("Edges New\n");
+		float r = 10;
+		
+		for (int x = 0; x < dog_oct.size(); x++){
+			//printf("  Oct %d\n", x);
+			for (int y = 0; y < dog_oct[x].size(); y++){
+				//printf("    Level %d\n", y);
+
+				cv::Mat test = dog_oct[x][y];
+				//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_c.png", dog_oct[x][y], compression_params);
+				
+				cv::Mat temp = myElemMat(myElemScalar(myConv2(test, sder_y, 0), -1, -1), myConv2(test, der_y, 0), 0);
+
+				dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(myTranspose(test), der_y, 0), 0), 0.5, 0), test, 1);
+				//dog_oct[x][y] = myElemMat( myElemScalar( myElemMat(temp, myConv2(test, myTranspose(der_y), 0), 0), 0.5, 0), test, 1);
+				
+				cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zc.png", dog_oct[x][y], compression_params);
+				int levels = dog_oct[x].size();
+
 			}
 		}
 
-		return output;
+		for (int key_idx = 0; key_idx < keys.size(); key_idx++){
+			keypoint& cur_key = keys[key_idx];
+			int index = cur_key.index;
+			int octave = cur_key.oct;
+			int idx = cur_key.idx;
+			int idy = cur_key.idy;
+
+			if (abs(dog_oct[octave][index].at<float>(idx,idy)) < 7.65){
+				cur_key.filtered = true;
+				continue;
+			}
+
+			float Dxx = dog_oct[octave][index].at<float>(idx - 1, idy) + dog_oct[octave][index].at<float>(idx + 1, idy) - 2 * dog_oct[octave][index].at<float>(idx, idy);
+			float Dyy = dog_oct[octave][index].at<float>(idx, idy - 1) + dog_oct[octave][index].at<float>(idx, idy + 1) - 2 * dog_oct[octave][index].at<float>(idx, idy);
+			float Dxy = dog_oct[octave][index].at<float>(idx - 1, idy - 1) + dog_oct[octave][index].at<float>(idx + 1, idy + 1) - dog_oct[octave][index].at<float>(idx - 1, idy + 1) - dog_oct[octave][index].at<float>(idx + 1, idy - 1);
+			float deter = Dxx * Dyy - Dxy * Dxy;
+			if (deter <= 0){
+				cur_key.filtered = true;
+				continue;
+			}
+			//float R = (Dxx + Dyy) / deter;
+			float R = ((Dxx + Dyy) * (Dxx + Dyy)) / deter;
+			float R_thresh = ((r + 1) * (r + 1)) / r;
+			if (R > R_thresh){
+				cur_key.filtered = true;
+			}
+
+		}
+
+		int fish;
+
+		return;
 	}
 
 	void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
 		nvtxEventAttributes_t eventAttrib = get_nvtAttrib("mySiftEdgeResponses", 0xFF0000FF);
 		float r = 10;
-		float t = std::pow(r + 1, 2) / r;
+		//float t = std::pow(r + 1, 2) / r;
+		float t = ((r + 1) * (r + 1)) / r;
 
 		int key_count = keys.size();
 
@@ -1563,6 +2059,7 @@ namespace img_proc{
 			//	key_index++;
 			//	continue;
 			//}
+			
 			neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index - 1]);
 			neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index]);
 			neighbors.push_back(dog_oct[key_now.oct][(int)key_now.index + 1]);
@@ -1576,8 +2073,12 @@ namespace img_proc{
 			const float dyy = soDer.at<float>(1, 1);
 			const float dxy = soDer.at<float>(0, 1);
 			float* tptr = (float*)foDer.datastart;
+			printf(" %d:%d ", key_now.oct, key_now.index);
 
-			//printf("Point %d: dx: %f; dy: %f; ds: %f\n", key_index, tptr[0], tptr[1], tptr[2]);
+			if (key_now.index != 0){
+				//printf("  Point %d: dx: %f; dy: %f; ds: %f  \n", key_now.index, tptr[0], tptr[1], tptr[2]);
+				//getchar();
+			}
 
 			//cv::Mat neg_soDer = soDer * -1;
 
@@ -1598,7 +2099,7 @@ namespace img_proc{
 			//	}
 			//}
 			float vals[4];
-			cv::Mat ems = cv::Mat::zeros(3, 3, CV_32F);
+			/*cv::Mat ems = cv::Mat::zeros(3, 3, CV_32F);
 			for (int a = 0; a < 3; a++){
 				for (int b = 0; b < 3; b++){
 					int box = 0;
@@ -1612,13 +2113,23 @@ namespace img_proc{
 					}
 					ems.at<float>(a, b) = ((vals[0] * vals[3]) - (vals[1] * vals[2])) * pow(-1, 3 * a + b) / det;
 				}
-			}
+			}*/
 			cv::Mat emt = cv::Mat::zeros(3, 3, CV_32F);
-			for (int a = 0; a < 3; a++){	// Transpose
+			/*for (int a = 0; a < 3; a++){	// Transpose
 				for (int b = 0; b < 3; b++){
-					emt.at<float>(a, b) = ems.at<float>(b, a);
+					emt.at<float>(a, b) = ems.at<float>(a, b);
 				}
+			}*/
+
+			for (int iter = 0; iter < soDer.rows * soDer.cols; iter++){
+				soDer.at<float>(iter) = -soDer.at<float>(iter);
 			}
+
+			emt = soDer.inv();
+
+			cv::Mat expt;
+
+			cv::solve(emt, foDer, expt);
 
 			//cv::Mat extreme = emt * foDer;
 
@@ -1636,7 +2147,33 @@ namespace img_proc{
 			float expt1 = (emt.at<float>(1, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(1, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(1, 2) * foDer.at<float>(2, 0));
 			float expt2 = (emt.at<float>(2, 0) * foDer.at<float>(0, 0)) + (emt.at<float>(2, 1) * foDer.at<float>(1, 0)) + (emt.at<float>(2, 2) * foDer.at<float>(2, 0));
 
-			if (abs(expt0) > 0.5 || abs(expt1) > 0.5 || abs(expt2) > 0.5){
+			//printf("%f:%f  %f:%f  %f:%f\n", expt.at<float>(0), expt0, expt.at<float>(1), expt1, expt.at<float>(2), expt2);
+
+			if (expt.at<float>(0,0) > 0.5 || expt.at<float>(1,0) > 0.5 || expt.at<float>(2,0) > 0.5){
+
+				/*bool repeat = false;
+				if (expt0 < -0.5){
+					key_now.idx += 0.5;
+					repeat = true;
+				}
+				else if (expt0 > 0.5){
+					key_now.idx -= 0.5;
+					repeat = true;
+				}
+				else if (expt1 < -0.5){
+					key_now.idy += 0.5;
+					repeat = true;
+				}
+				else if (expt1 > 0.5){
+					key_now.idy -= 0.5;
+					repeat = true;
+				}
+				if (repeat){
+					printf("expt0: %f, expt1: %f, expt2: %f\n", expt0, expt1, expt2);
+					continue;
+				}*/
+
+				printf(" %f:%f:%f \n", expt.at<float>(0, 0), expt.at<float>(1, 0), expt.at<float>(2, 0));
 				keys[key_index].filtered = true;
 				//key_now.filtered = true;
 				key_index++;
@@ -1647,14 +2184,24 @@ namespace img_proc{
 			//for (int i = 0; i < 3; i++){
 			//	ex_val += tptr[i] * exptr[i];
 			//}
-			ex_val += tptr[0] * expt0;
-			ex_val += tptr[1] * expt1;
-			ex_val += tptr[2] * expt2;
+			//ex_val += tptr[0] * expt.at<float>(0);
+			//ex_val += tptr[1] * expt.at<float>(1);
+			//ex_val += tptr[2] * expt.at<float>(2);
+			ex_val = expt.dot(foDer);
+			//printf(" %f:%f:%f ", expt.at<float>(0), expt.at<float>(1), expt.at<float>(2));
+			printf(" %f:%f:%f ", foDer.at<float>(0), foDer.at<float>(1), foDer.at<float>(2));
+			
 
-			ex_val *= 0.5;
-			ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx,key_now.idy);
+			//printf("ex_val: %f  ", ex_val);
+
+			//ex_val *= 0.5;
+			//ex_val += dog_oct[key_now.oct][(int)key_now.index].at<float>(key_now.idx,key_now.idy);
+			ex_val *= 0.5 + (dog_oct[key_now.oct][key_now.index].at<float>(key_now.idx, key_now.idy) - 127.5);
+			printf("ex_val: %f ", abs(ex_val));	//Fix Later
 			if (abs(ex_val) < 0.03){
+				
 				//printf("ex_val: %f\n", abs(ex_val));	//Fix Later
+				printf("\n");
 				key_now.filtered = true;
 				key_index++;
 				continue;
@@ -1665,8 +2212,10 @@ namespace img_proc{
 
 			if (h_det <= 0 || pow(h_trace,2) / h_det > t){
 				key_now.filtered = true;
+				printf("\n");
 			}
-
+			else
+				printf("passed \n");
 			key_index++;
 		}
 		nvtxRangePop();
@@ -1799,7 +2348,7 @@ namespace img_proc{
 			return 3 * (idx * cols + idy);
 		}
 		else if (type == 0){
-			return idx * cols + idy;
+			return (idx * cols) + idy;
 		}
 		return 0;
 	}
@@ -1813,8 +2362,8 @@ namespace img_proc{
 		float* pre_ptr = (float*)neighbors[0].datastart;
 		float* nex_ptr = (float*)neighbors[2].datastart;
 
-		const float dx = ((float)cur_ptr[index(px - 1, py, cols, 0)] - (float)cur_ptr[index(px + 1, py, cols, 0)]) / 2.0;
-		const float dy = ((float)cur_ptr[index(px, py - 1, cols, 0)] - (float)cur_ptr[index(px, py + 1, cols, 0)]) / 2.0;
+		const float dx = ((float)cur_ptr[index(px, py - 1, cols, 0)] - (float)cur_ptr[index(px, py + 1, cols, 0)]) / 2.0;
+		const float dy = ((float)cur_ptr[index(px - 1, py, cols, 0)] - (float)cur_ptr[index(px + 1, py, cols, 0)]) / 2.0;
 		const float ds = ((float)pre_ptr[index(px, py, cols, 0)] - (float)nex_ptr[index(px, py, cols, 0)]) / 2.0;
 
 		//printf("dx: %f, dy: %f, ds: %f\n", dx, dy, ds);
@@ -1844,19 +2393,12 @@ namespace img_proc{
 		float* pre_ptr = (float*)neighbors[0].datastart;
 		float* nex_ptr = (float*)neighbors[2].datastart;
 
-		const float dxx = (float)(cur_ptr[index(px + 1, py, cols, 0)] + cur_ptr[index(px - 1, py, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
-		const float dyy = (float)(cur_ptr[index(px, py + 1, cols, 0)] + cur_ptr[index(px, py - 1, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
-		const float dss = (float)(nex_ptr[index(px, py, cols, 0)] + pre_ptr[index(px, py, cols, 0)]) - 2.0 * cur_ptr[index(px, py, cols, 0)];
-		const float dxy = (float)(cur_ptr[index(px + 1, py + 1, cols, 0)] - cur_ptr[index(px - 1, py + 1, cols, 0)] - cur_ptr[index(px + 1, py - 1, cols, 0)] + cur_ptr[index(px - 1, py - 1, cols, 0)]) / 2.0;
-		const float dxs = (float)(nex_ptr[index(px + 1, py, cols, 0)] - nex_ptr[index(px - 1, py, cols, 0)] - pre_ptr[index(px + 1, py, cols, 0)] + pre_ptr[index(px - 1, py, cols, 0)]) / 2.0;
-		const float dys = (float)(nex_ptr[index(px, py + 1, cols, 0)] - nex_ptr[index(px, py - 1, cols, 0)] - pre_ptr[index(px, py + 1, cols, 0)] + pre_ptr[index(px, py - 1, cols, 0)]) / 2.0;
-
-		//const float dxx = neighbors[1].at<cv::Vec3b>(px + 1, py)[0] + neighbors[1].at<cv::Vec3b>(px - 1, py)[0] - 2.0 * neighbors[1].at<cv::Vec3b>(px, py)[0];
-		//const float dyy = neighbors[1].at<cv::Vec3b>(px, py + 1)[0] + neighbors[1].at<cv::Vec3b>(px, py - 1)[0] - 2.0 * neighbors[1].at<cv::Vec3b>(px, py)[0];
-		//const float dss = neighbors[2].at<cv::Vec3b>(px, py)[0] + neighbors[0].at<cv::Vec3b>(px, py)[0] - 2.0 * neighbors[1].at<cv::Vec3b>(px, py)[0];
-		//const float dxy = (neighbors[1].at<cv::Vec3b>(px + 1, py + 1)[0] - neighbors[1].at<cv::Vec3b>(px - 1, py + 1)[0] - neighbors[1].at<cv::Vec3b>(px + 1, py - 1)[0] + neighbors[1].at<cv::Vec3b>(px - 1, py - 1)[0]) / 2;
-		//const float dxs = (neighbors[2].at<cv::Vec3b>(px + 1, py)[0] - neighbors[2].at<cv::Vec3b>(px - 1, py)[0] - neighbors[0].at<cv::Vec3b>(px + 1, py)[0] + neighbors[0].at<cv::Vec3b>(px - 1, py)[0]) / 2;
-		//const float dys = (neighbors[2].at<cv::Vec3b>(px, py + 1)[0] - neighbors[2].at<cv::Vec3b>(px, py - 1)[0] - neighbors[0].at<cv::Vec3b>(px, py + 1)[0] + neighbors[0].at<cv::Vec3b>(px, py - 1)[0]) / 2;
+		const float dxx = (float)(cur_ptr[index(px, py + 1, cols, 0)] + cur_ptr[index(px, py - 1, cols, 0)]) - (2.0 * cur_ptr[index(px, py, cols, 0)]);
+		const float dyy = (float)(cur_ptr[index(px + 1, py, cols, 0)] + cur_ptr[index(px - 1, py, cols, 0)]) - (2.0 * cur_ptr[index(px, py, cols, 0)]);
+		const float dss = (float)(nex_ptr[index(px, py, cols, 0)] + pre_ptr[index(px, py, cols, 0)]) - (2.0 * cur_ptr[index(px, py, cols, 0)]);
+		const float dxy = (float)(cur_ptr[index(px + 1, py + 1, cols, 0)] - cur_ptr[index(px + 1, py - 1, cols, 0)] - cur_ptr[index(px - 1, py + 1, cols, 0)] + cur_ptr[index(px - 1, py - 1, cols, 0)]) / 2.0;
+		const float dxs = (float)(nex_ptr[index(px, py + 1, cols, 0)] - nex_ptr[index(px, py - 1, cols, 0)] - pre_ptr[index(px, py + 1, cols, 0)] + pre_ptr[index(px, py - 1, cols, 0)]) / 2.0;
+		const float dys = (float)(nex_ptr[index(px + 1, py, cols, 0)] - nex_ptr[index(px - 1, py, cols, 0)] - pre_ptr[index(px + 1, py, cols, 0)] + pre_ptr[index(px - 1, py, cols, 0)]) / 2.0;
 
 		float* res_ptr = (float*)result.datastart;
 
@@ -1869,22 +2411,6 @@ namespace img_proc{
 		res_ptr[6] = dxs;
 		res_ptr[7] = dys;
 		res_ptr[8] = dss;
-
-		//result.at<float>(0, 0) = dxx;
-		//result.at<float>(1, 0) = dxy;
-		//result.at<float>(2, 0) = dxs;
-		//result.at<float>(0, 1) = dxy;
-		//result.at<float>(1, 1) = dyy;
-		//result.at<float>(2, 1) = dys;
-		//result.at<float>(0, 2) = dxs;
-		//result.at<float>(1, 2) = dys;
-		//result.at<float>(2, 2) = dss;
-
-		//printf("soDer: \n");
-		//printf("[ %f, %f, %f]\n", dxx, dxy, dxs);
-		//printf("[ %f, %f, %f]\n", dxy, dyy, dys);
-		//printf("[ %f, %f, %f]\n", dxs, dys, dss);
-		//getchar();
 
 		//nvtxRangePop();
 		return result;
@@ -2403,7 +2929,8 @@ namespace img_proc{
 				int idx = i * cols + j;
 				if (data_1[idx] != data_2[idx]){ 
 					dcount++; 
-					data_1[idx] = data_2[idx];
+					//data_1[idx] = data_2[idx];
+					data_1[idx] = 0.0;
 				}
 				else{
 					data_1[idx] = data_2[idx];
@@ -2461,5 +2988,7 @@ namespace img_proc{
 		result *= M_PI / 180.0;
 		return result;
 	}
+
+
 
 }

@@ -17,7 +17,7 @@ namespace img_proc{
 	{
 	public:
 		int idx, idy, oct, index;
-		float angle, scale, mag;
+		float angle, scale, mag, posx, posy;
 		bool filtered = false;
 		std::vector<float> descriptors;
 		keypoint(int _idx, int _idy, int _oct, float _angle, int _index){	//Constuctor
@@ -56,14 +56,24 @@ namespace img_proc{
 	cv::Mat linearResize(cv::Mat image, int rows, int cols);
 	cv::Mat flinearResize(cv::Mat image, int rows, int cols);
 	void createFilter(double gKernel[][2 * FILTER_SIZE + 1], double inputSigma);
+	cv::Mat makeFilter(float sigma);
 	cv::Mat gaussianFilter(cv::Mat image, double sigma);
 	cv::Mat fgaussianFilter(cv::Mat image, double sigma);
+	cv::Mat fGaussianFilterSep(cv::Mat image, float sigma);
+	cv::Mat myConv2(cv::Mat large, cv::Mat small, int mode);
+	cv::Mat myTranspose(cv::Mat input);
+	cv::Mat myTrim(cv::Mat input, int top, int bottom, int left, int right);
+	cv::Mat myElemScalar(cv::Mat input, float scalar, int mode);
+	cv::Mat myElemMat(cv::Mat mat1, cv::Mat mat2, int mode);
 	cv::Mat sobelFilter(cv::Mat image);
 	double color_distance(double r1, double g1, double b1, double r2, double g2, double b2);
 	cv::Mat kMeans(cv::Mat image, int k_means);
+	cv::Mat kMeansFixed(cv::Mat image, int k_means);
 	cv::Mat gaussianPyramid(cv::Mat image, uchar levels, float scale);
 	cv::Mat fGaussTest(cv::Mat image);
+	cv::Mat depthFromStereo(cv::Mat image_l, cv::Mat image_r, float fl, float fr, float baseline);
 	cv::Mat mySift(cv::Mat image);
+	void mySiftEdgeResponsesNew(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys);
 	void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys);
 	void mySiftDescriptors(std::vector<keypoint>& keys, std::vector<std::vector<cv::Mat>>& blur_oct, std::vector<std::vector<float*>>& or_mag_oct, int unfiltered);
 	std::vector<float> mySiftVectorThreshold(std::vector<float>& vec);

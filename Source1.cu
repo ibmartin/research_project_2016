@@ -1089,10 +1089,7 @@ return output;
 //-- Main
 
 void simulate(cv::Mat& im){
-	/*im = frgb2Gray(im);
-	img_proc::fgaussianFilter(im, 2.0);
-	fGaussianFilter(im, 2.0);*/	//fGaussianFilter
-
+	//im = frgb2Gray(im);
 	img_proc::mySift(im);
 	mySift(im);
 }
@@ -1100,26 +1097,76 @@ void simulate(cv::Mat& im){
 int main(void){		// [MAIN]
 
 	//printf("%d\n", (unsigned int)powf(2, 2) & 4);
+	//img_proc::makeFilter(1.7148);
 	//printf("Done!\n");
 	//getchar();
 	//return;
-	cv::Mat im;
+
+
+	cv::Mat im, im0, im1;
 	im = imread("D://School//Summer 2016//Research//audrey.jpg");
-	//im = imread("D://School//Summer 2016//Research//nausicaa.jpg");
+	im = img_proc::linearResize(im, 640, 640);
+	//im = img_proc::frgb2Gray(im);
+	//im = imread("D://School//Summer 2016//Research//Stereo//storage//z_im0.png");
+
+
+	//im0 = imread("D://School//Summer 2016//Research//kMeans//nausicaa_float_cpu.png");
+	//im0 = img_proc::frgb2Gray(im0);
+	//im1 = imread("D://School//Summer 2016//Research//kMeans//nausicaa_float_gpu.png");
+	//im1 = img_proc::frgb2Gray(im1);
+
+
 	//im = imread("D://School//Summer 2016//Research//bike.jpg");
 	//im = imread("D://School//Summer 2016//Research//gray//einstein_gray.png");
+	//im0 = imread("D://School//Summer 2016//Research//Stereo//storage//ims0.png");
+	//im1 = imread("D://School//Summer 2016//Research//Stereo//storage//ims1.png");
 
-	/*if (im.empty()){
-	printf("Error!\n");
-	getchar();
-	return -1;
-	}*/
+	if (im.empty()){
+		printf("Error!\n");
+		getchar();
+		return -1;
+	}
 
 	vector<int> compression_params;
 	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
 	compression_params.push_back(9);
 
 	int versionFish = 0;
+
+	//img_proc::diff_count(im0, im1);
+
+	//im = img_proc::frgb2Gray(im);
+	//im = img_proc::fGaussianFilterSep(im, 1.6);
+	//im = img_proc::mySift(im);
+	//im = fGaussianFilterSep(im, 1.6);
+	im = img_proc::mySift(im);
+	//im = img_proc::mySift(im);
+	//im = myConv2(im, filter, 0);
+	//im1 = kMeansFixed(im, 4);
+	//im = img_proc::linearResize(im, im.rows / 4, im.cols / 4);
+
+	//im0 = imread("D://School//Summer 2016//Research//mySift//audrey_conv_cpu.png");
+	//im1 = imread("D://School//Summer 2016//Research//mySift//audrey_conv_gpu.png");
+	//im0 = img_proc::frgb2Gray(im0);
+	//im1 = img_proc::frgb2Gray(im1);
+	//im = img_proc::diff_count(im0, im1);
+	
+
+	imwrite("D://School//Summer 2016//Research//mySift//audrey_test_cpu.png", im, compression_params);
+	//imwrite("D://School//Summer 2016//Research//Stereo//storage//z_im1.png", im, compression_params);
+
+	//im0 = img_proc::frgb2Gray(im0);
+	//im1 = img_proc::frgb2Gray(im1);
+
+	//img_proc::diff_count(im0, im1);
+
+
+	//im = img_proc::depthFromStereo(im0, im1, 0, 0, 0);
+	//im = img_proc::kMeans(im, 8);
+	//im = kMeans(im, 8);
+	//im = img_proc::kMeansFixed(im, 8);
+
+	//imwrite("D://School//Summer 2016//Research//kMeans//nausicaa_float_gpu.png", im, compression_params);
 
 	//cudaRuntimeGetVersion(&versionFish);
 
@@ -1132,7 +1179,6 @@ int main(void){		// [MAIN]
 
 	//get_nvtAttrib("Bike", 0xFF222222);
 	//img_proc::mySift(im);
-	mySift(im);
 	//mySift(im);
 	//nvtxRangePop();
 	//Mat resized = gaussianFilter(im,2.0);
@@ -1151,17 +1197,14 @@ int main(void){		// [MAIN]
 
 	//Mat resized, resized2;
 
-	/*cudaLagSetup();
+	//cudaLagSetup();
 
-	im = imread("D://School//Summer 2016//Research//aurora.jpg");
-	get_nvtAttrib("Aurora", 0xFF222222);
-	//im = frgb2Gray(im);
-	//img_proc::fgaussianFilter(im, 2.0);
-	//fGaussianFilter(im, 2.0);
-	simulate(im);
-	nvtxRangePop();
+	//im = imread("D://School//Summer 2016//Research//audrey.jpg");
+	//get_nvtAttrib("Audrey", 0xFF222222);
+	//simulate(im);
+	//nvtxRangePop();
 
-	im = imread("D://School//Summer 2016//Research//einstein.png");
+	/*im = imread("D://School//Summer 2016//Research//einstein.png");
 	get_nvtAttrib("Einstein", 0xFF222222);
 	//im = frgb2Gray(im);
 	//img_proc::fgaussianFilter(im, 2.0);
@@ -1233,70 +1276,13 @@ int main(void){		// [MAIN]
 	simulate(im);
 	nvtxRangePop();*/
 
+	//********//
+
 	printf("Done!\n");
 	getchar();
 	return 0;
-	//auto time2 = std::chrono::high_resolution_clock::now();
-	//double total_time = std::chrono::duration_cast<std::chrono::microseconds> (time2 - time1).count();
-	//printf("\nTime for run: %f\n", total_time);
-	//Mat resized = frgb2Gray(im);
-	//resized = fGaussianFilter(resized, 1.6);
-	//resized = img_proc::fgaussianFilter(resized, 1.6);
-	//resized = fdirectResize(resized, resized.rows / 2.0, resized.cols / 2.0);
 
-	//Mat temp = frgb2Gray(im);
-	//Mat resized = fdirectResize(temp,temp.rows/2,temp.cols/2);
-	//Mat resized = directResize(im, im.rows / 2, im.cols / 2);
-	//Mat resized = img_proc::frgb2Gray(im);
-	//resized = img_proc::fdirectResize(resized, resized.rows * 2, resized.cols * 2);
-	//resized = img_proc::fgaussianFilter(resized, 1.6);
-	//Mat resized = img_proc::fDirTest(im);
-
-	/*float k = pow(2, (1 / 3));
-	Mat im2 = img_proc::frgb2Gray(im);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_0.png", im2, compression_params);
-	im2 = img_proc::fgaussianFilter(im2,k);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_1.png", im2, compression_params);
-	im2 = img_proc::fgaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_2.png", im2, compression_params);
-	im2 = img_proc::fgaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_3.png", im2, compression_params);
-	im2 = img_proc::fgaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_4.png", im2, compression_params);
-	im2 = img_proc::fgaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_gauss_test_5.png", im2, compression_params);*/
-
-	/*float k = pow(2, (1 / 3));
-	Mat im2 = im;
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_0.png", im2, compression_params);
-	im2 = img_proc::gaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_1.png", im2, compression_params);
-	im2 = img_proc::gaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_2.png", im2, compression_params);
-	im2 = img_proc::gaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_3.png", im2, compression_params);
-	im2 = img_proc::gaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_4.png", im2, compression_params);
-	im2 = img_proc::gaussianFilter(im2, k);
-	imwrite("D://School//Summer 2016//Research//gray//audrey_gauss_utest_5.png", im2, compression_params);*/
-
-	//imwrite("D://School//Summer 2016//Research//gray//valve.png", resized, compression_params);
-	//Mat out = img_proc::diff_count(resized, resized2);
-	//imwrite("D://School//Summer 2016//Research//gray//valve_com_gpu.png", out, compression_params);
-
-	//imwrite("D://School//Summer 2016//Research//mySift//ffgauss_test.png", resized, compression_params);
-	//imwrite("D://School//Summer 2016//Research//mySift//hitomii_test.png", resized, compression_params);
-	//imwrite("D://School//Summer 2016//Research//gray//einstein_test.png", resized, compression_params);
-
-	//imshow("Lena", im);
-	//waitKey(0);
-	//printf("rows: %d, columns: %d, %d \n", resized.rows, resized.cols, intensity.val[2]);
-	//imshow("Lena", resized);
-	//printf("Done!\n");
-	//getchar();
-
-	//return 0;
-
+	//********//
 
 
 	ofstream avg_file, det_file, allc_file, allg_file, spd_file, thc_file, thg_file;
@@ -1319,7 +1305,7 @@ int main(void){		// [MAIN]
 
 	//printf("Reading started... ");
 
-	for (int pics = 0; pics <= 10; pics++){
+	for (int pics = 0; pics <= 8; pics++){
 		Mat im1;
 		if (pics == 0){
 			avg_file.open("D://School//Summer 2016//Research//Textfiles//averages_einstein.txt");
@@ -1370,18 +1356,24 @@ int main(void){		// [MAIN]
 			name = "nausicaa";
 		}
 		else if (pics == 8){
+			avg_file.open("D://School//Summer 2016//Research//Textfiles//averages_audrey.txt");
+			det_file.open("D://School//Summer 2016//Research//Textfiles//details_audrey.txt");
+			im1 = imread("D://School//Summer 2016//Research//audrey.jpg");
+			name = "oranges";
+		}
+		else if (pics == 9){
 			avg_file.open("D://School//Summer 2016//Research//Textfiles//averages_oranges.txt");
 			det_file.open("D://School//Summer 2016//Research//Textfiles//details_oranges.txt");
 			im1 = imread("D://School//Summer 2016//Research//oranges.jpg");
 			name = "oranges";
 		}
-		else if (pics == 9){
+		else if (pics == 10){
 			avg_file.open("D://School//Summer 2016//Research//Textfiles//averages_mountains.txt");
 			det_file.open("D://School//Summer 2016//Research//Textfiles//details_mountains.txt");
 			im1 = imread("D://School//Summer 2016//Research//mountains.jpg");
 			name = "mountains";
 		}
-		else if (pics == 10){
+		else if (pics == 11){
 			avg_file.open("D://School//Summer 2016//Research//Textfiles//averages_tiger.txt");
 			det_file.open("D://School//Summer 2016//Research//Textfiles//details_tiger.txt");
 			im1 = imread("D://School//Summer 2016//Research//tiger.jpg");
@@ -1406,6 +1398,7 @@ int main(void){		// [MAIN]
 
 		int rounds = 10;
 
+		printf("RGB2Gray\n");
 		double cpu_duration = 0, gpu_duration = 0;
 		det_file << "RGB 2 GRAY" << endl;
 		avg_file << "RGB 2 GRAY" << endl;
@@ -1442,6 +1435,7 @@ int main(void){		// [MAIN]
 
 		//Reverse
 
+		printf("Reverse\n");
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
 		det_file << "REVERSE" << endl;
@@ -1475,6 +1469,7 @@ int main(void){		// [MAIN]
 
 		//Gamma Correction
 
+		printf("Gamma Correction\n");
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
 		det_file << "GAMMA CORRECTION" << endl;
@@ -1508,6 +1503,7 @@ int main(void){		// [MAIN]
 
 		//Direct Resize
 
+		printf("Direct Resize x2\n");
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
 		det_file << "DIRECT RESIZE (X2)" << endl;
@@ -1539,6 +1535,7 @@ int main(void){		// [MAIN]
 		thc_file << "," << fixed << filesize / (cpu_duration / rounds);
 		thg_file << "," << fixed << filesize / (gpu_duration / rounds);
 
+		printf("Direct Resize x0.5\n");
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
 		det_file << "DIRECT RESIZE (X0.5)" << endl;
@@ -1572,6 +1569,7 @@ int main(void){		// [MAIN]
 
 		//Linear Resize
 
+		printf("Linear Resize x2\n");
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
 		det_file << "LINEAR RESIZE (X2)" << endl;
@@ -1605,6 +1603,7 @@ int main(void){		// [MAIN]
 
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
+		printf("Linear Resize x0.5\n");
 		det_file << "LINEAR RESIZE (X0.5)" << endl;
 		avg_file << "LINEAR RESIZE (X0.5)" << endl;
 		for (int runs = 1; runs <= rounds; runs++){
@@ -1638,20 +1637,23 @@ int main(void){		// [MAIN]
 
 		rounds = 5;
 		cpu_duration = 0; gpu_duration = 0;
+		printf("Gaussian Filter Sep\n");
+		Mat img_temp = frgb2Gray(im1);
 		//Mat im1 = imread("D://School//Summer 2016//Research//valve.png");
-		det_file << "GAUSSIAN FILTER (SIZE 3, SIGMA 1.0)" << endl;
-		avg_file << "GAUSSIAN FILTER (SIZE 3, SIGMA 1.0)" << endl;
+		det_file << "GAUSSIAN FILTER SEP (SIZE 3, SIGMA 1.0)" << endl;
+		avg_file << "GAUSSIAN FILTER SEP (SIZE 3, SIGMA 1.0)" << endl;
 		for (int runs = 1; runs <= rounds; runs++){
 			double cpu_time = 0, gpu_time = 0;
 			auto t1 = std::chrono::high_resolution_clock::now();
-			img_proc::gaussianFilter(im1, 1.0);
+			//img_proc::gaussianFilter(im1, 1.0);
+			img_proc::fGaussianFilterSep(img_temp, 1.0);
 			auto t2 = std::chrono::high_resolution_clock::now();
 			cpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t2 - t1).count();
 			det_file << "CPU Run: " << fixed << cpu_time << micro << "s" << endl;
 			cpu_duration += cpu_time;
 
 			auto t3 = std::chrono::high_resolution_clock::now();
-			gaussianFilter(im1, 1.0);
+			fGaussianFilterSep(img_temp, 1.0);
 			auto t4 = std::chrono::high_resolution_clock::now();
 			gpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t4 - t3).count();
 			det_file << "GPU Run: " << fixed << gpu_time << micro << "s" << endl;
@@ -1673,6 +1675,7 @@ int main(void){		// [MAIN]
 		rounds = 1;
 		cpu_duration = 0; gpu_duration = 0;
 		//Mat im2 = imread("D://School//Summer 2016//Research//valve_gray.png");
+		printf("Edge Filter\n");
 		det_file << "EDGE DETECTION" << endl;
 		avg_file << "EDGE DETECTION" << endl;
 		for (int runs = 1; runs <= rounds; runs++){
@@ -1712,14 +1715,14 @@ int main(void){		// [MAIN]
 		for (int runs = 1; runs <= rounds; runs++){
 			double cpu_time = 0, gpu_time = 0;
 			auto t1 = std::chrono::high_resolution_clock::now();
-			img_proc::kMeans(im1, 8);
+			img_proc::kMeansFixed(im1, 8);
 			auto t2 = std::chrono::high_resolution_clock::now();
 			cpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t2 - t1).count();
 			det_file << "CPU Run: " << fixed << cpu_time << micro << "s" << endl;
 			cpu_duration += cpu_time;
 
 			auto t3 = std::chrono::high_resolution_clock::now();
-			kMeans(im1, 8);
+			kMeansFixed(im1, 8);
 			auto t4 = std::chrono::high_resolution_clock::now();
 			gpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t4 - t3).count();
 			det_file << "GPU Run: " << fixed << gpu_time << micro << "s" << endl;
@@ -1754,6 +1757,44 @@ int main(void){		// [MAIN]
 
 			auto t3 = std::chrono::high_resolution_clock::now();
 			gaussianPyramid(im1, 8, 0.5);;
+			auto t4 = std::chrono::high_resolution_clock::now();
+			gpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t4 - t3).count();
+			det_file << "GPU Run: " << fixed << gpu_time << micro << "s" << endl;
+			gpu_duration += gpu_time;
+		}
+		det_file << "========" << endl;
+		avg_file << "CPU Average: " << fixed << cpu_duration / rounds << micro << "s" << endl;
+		avg_file << "GPU Average: " << fixed << gpu_duration / rounds << micro << "s" << endl;
+		avg_file << "CPU:GPU:  " << fixed << cpu_duration / gpu_duration << endl;
+		avg_file << "========" << endl;
+		allc_file << "," << fixed << cpu_duration / rounds;
+		allg_file << "," << fixed << gpu_duration / rounds;
+		spd_file << "," << fixed << cpu_duration / gpu_duration;
+		thc_file << "," << fixed << filesize / (cpu_duration / rounds);
+		thg_file << "," << fixed << filesize / (gpu_duration / rounds);
+
+
+		//SIFT
+
+		rounds = 1;
+		cpu_duration = 0; gpu_duration = 0;
+		printf("SIFT\n");
+		//Mat im2 = imread("D://School//Summer 2016//Research//valve_gray.png");
+		int lesser = min(img_temp.rows, img_temp.cols);
+		Mat img_sqtmp = fdirectResize(img_temp,lesser,lesser);
+		det_file << "SIFT" << endl;
+		avg_file << "SIFT" << endl;
+		for (int runs = 1; runs <= rounds; runs++){
+			double cpu_time = 0, gpu_time = 0;
+			auto t1 = std::chrono::high_resolution_clock::now();
+			img_proc::mySift(img_sqtmp);
+			auto t2 = std::chrono::high_resolution_clock::now();
+			cpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t2 - t1).count();
+			det_file << "CPU Run: " << fixed << cpu_time << micro << "s" << endl;
+			cpu_duration += cpu_time;
+
+			auto t3 = std::chrono::high_resolution_clock::now();
+			mySift(img_sqtmp);
 			auto t4 = std::chrono::high_resolution_clock::now();
 			gpu_time = std::chrono::duration_cast<std::chrono::microseconds> (t4 - t3).count();
 			det_file << "GPU Run: " << fixed << gpu_time << micro << "s" << endl;

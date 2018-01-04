@@ -17,7 +17,7 @@ class keypoint
 {
 public:
 	int idx, idy, oct, index;
-	float angle, scale, mag;
+	float angle, scale, mag, posx, posy;
 	bool filtered = false;
 	std::vector<float> descriptors;
 	keypoint(int _idx, int _idy, int _oct, float _angle, int _index){	//Constuctor
@@ -192,6 +192,112 @@ void createFilter(double* gKernel, double inputSigma, int filter_size){
 	nvtxRangePop();
 }
 
+Mat makeFilter(float sigma){
+
+	int dim = floor(6 * sigma);
+	Mat outFilter(1, dim, CV_32FC1);
+
+	float bound = -(dim - 1.0) / 2.0;
+	float sumh = 0.0;
+
+	for (int i = 0; i < outFilter.cols; i++){
+		float val = exp(-(bound * bound) / (2 * sigma * sigma));
+		outFilter.at<float>(0, i) = val;
+		sumh += val;
+		bound += 1.0;
+	}
+
+	if (sumh != 0){
+		for (int i = 0; i < outFilter.cols; i++){
+			outFilter.at<float>(0, i) = outFilter.at<float>(0, i) / sumh;
+		}
+	}
+
+	return outFilter;
+
+}
+
+cv::Mat myTranspose(cv::Mat input){
+	cv::Mat output(input.cols, input.rows, input.type());
+
+	for (int i = 0; i < output.rows; i++){
+		for (int j = 0; j < output.cols; j++){
+			output.at<float>(i, j) = input.at<float>(j, i);
+		}
+	}
+	return output;
+}
+
+cv::Mat myTrim(cv::Mat input, int top, int bottom, int left, int right){
+	int rows = input.rows - top - bottom;
+	int cols = input.cols - left - right;
+	cv::Mat output(rows, cols, input.type());
+
+	for (int i = 0; i < rows; i++){
+		for (int j = 0; j < cols; j++){
+			output.at<float>(i, j) = input.at<float>(i + top, j + left);
+		}
+	}
+	return output;
+}
+
+cv::Mat myElemScalar(cv::Mat input, float scalar, int mode = 0){
+	//mode == 0 is multiply
+	//mode = -1 is divide
+	//mode = 1 is add
+	cv::Mat output(input.rows, input.cols, input.type());
+	for (int i = 0; i < input.rows; i++){
+		for (int j = 0; j < input.cols; j++){
+
+			if (mode == 0){
+				output.at<float>(i, j) = scalar * input.at<float>(i, j);
+			}
+			else if (mode == -1){
+				output.at<float>(i, j) = scalar / input.at<float>(i, j);
+			}
+			else if (mode == 1){
+				output.at<float>(i, j) = scalar + input.at<float>(i, j);
+			}
+
+		}
+	}
+	return output;
+}
+
+cv::Mat myElemMat(cv::Mat mat1, cv::Mat mat2, int mode = 0){
+	//mode == 0 is multiply
+	//mode == -1 is divide
+	//mode == 1 is add
+	//mode == 2 is subtract
+	if (mat1.rows != mat2.rows || mat1.cols != mat2.cols){
+		printf("Error: myElemMat\n");
+		return mat1;
+	}
+	cv::Mat output(mat1.rows, mat1.cols, mat1.type());
+
+	for (int i = 0; i < output.rows; i++){
+		for (int j = 0; j < output.cols; j++){
+
+			if (mode == 0){
+				output.at<float>(i, j) = mat1.at<float>(i, j) * mat2.at<float>(i, j);
+			}
+			else if (mode == -1){
+				output.at<float>(i, j) = mat1.at<float>(i, j) / mat2.at<float>(i, j);
+			}
+			else if (mode == 1){
+				output.at<float>(i, j) = mat1.at<float>(i, j) + mat2.at<float>(i, j);
+			}
+			else if (mode == 2){
+				output.at<float>(i, j) = mat1.at<float>(i, j) - mat2.at<float>(i, j);
+			}
+
+		}
+	}
+
+	return output;
+
+}
+
 Mat gaussianFilter(Mat image, double sigma){
 	get_nvtAttrib("gaussianFilter GPU", 0xFF880000);
 	int W = 2 * FILTER_SIZE + 1;
@@ -226,6 +332,45 @@ Mat fGaussianFilter(Mat image, double sigma){
 
 }
 
+Mat myConv2(Mat large, Mat small, int mode = 0){
+	if (small.rows > large.rows || small.cols > large.cols){
+		return large;
+	}
+	int rows = large.rows + small.rows - 1;
+	int cols = large.cols + small.cols - 1;
+	Mat temp = Mat::zeros(rows, cols, CV_32FC1);
+	float* tempP = (float*)temp.datastart;
+	float* largeP = (float*)large.datastart;
+	float* smallP = (float*)small.datastart;
+	cudaMyConv2(tempP, largeP, smallP, temp.rows, temp.cols, large.rows, large.cols, small.rows, small.cols);
+
+	if (mode == 0){
+		int top = small.rows / 2, bottom = (small.rows - 1) / 2, left = small.cols / 2, right = (small.cols - 1) / 2;
+		return myTrim(temp, top, bottom, left, right);
+	}
+
+	return temp;
+}
+
+cv::Mat fGaussianFilterSep(cv::Mat image, float sigma){
+	int srcRows = image.rows, srcCols = image.cols;
+
+	cv::Mat output = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+	cv::Mat temp = cv::Mat::zeros(image.rows, image.cols, CV_32FC1);
+
+	cv::Mat filter = makeFilter(sigma);
+	//cout << filter << endl;
+	cv::Mat tfilter = myTranspose(filter);
+	//cout << tfilter << endl;
+
+	//temp = image;
+	temp = myConv2(image, filter, 0);
+	output = myConv2(temp, tfilter, 0);
+	//output = temp;
+
+	return output;
+}
+
 Mat sobelFilter(Mat image){
 	get_nvtAttrib("sobelFilter GPU", 0xFF880000);
 	get_nvtAttrib("Setup outer", 0xFF000088);
@@ -251,6 +396,22 @@ Mat kMeans(Mat image, int k_means){
 	uchar* input = (uchar*)image.datastart;
 	uchar* output = (uchar*)out.datastart;
 	cudaKMeans(input, output, image.rows, image.cols, k_means);
+
+	nvtxRangePop();
+	return out;
+}
+
+Mat kMeansFixed(Mat image, int k_means){
+	get_nvtAttrib("kMeans GPU", 0xFF880000);
+	srand(2000);
+	if (k_means > 256){
+		printf("Error: Max number of groups exceeded (256)\n");
+		exit(-1);
+	}
+	Mat out(image.rows, image.cols, image.type());
+	uchar* input = (uchar*)image.datastart;
+	uchar* output = (uchar*)out.datastart;
+	cudaKMeansFixed(input, output, image.rows, image.cols, k_means);
 
 	nvtxRangePop();
 	return out;
@@ -495,6 +656,71 @@ void mySiftEdgeResponses(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector
 
 	//nvtxRangePop();
 
+}
+
+void mySiftEdgeResponsesNew(std::vector<std::vector<cv::Mat>>& dog_oct, std::vector<keypoint>& keys){
+	std::vector<int> compression_params;
+	compression_params.push_back(CV_IMWRITE_PNG_COMPRESSION);
+	compression_params.push_back(9);
+	float data[4] = { -1, -1, 1, 1 };
+	cv::Mat der_y = cv::Mat(2, 2, CV_32FC1, data);
+	//cout << der_y << endl;
+	cv::Mat sder_y = myConv2(der_y, der_y, 1);
+	//cout << sder_y << endl;
+	printf("Edges New\n");
+	float r = 10;
+
+	for (int x = 0; x < dog_oct.size(); x++){
+		printf("  Oct %d\n", x);
+		for (int y = 0; y < dog_oct[x].size(); y++){
+			printf("    Level %d\n", y);
+
+			cv::Mat test = dog_oct[x][y];
+			//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_g.png", dog_oct[x][y], compression_params);
+
+			cv::Mat temp = myElemMat(myElemScalar(myConv2(test, sder_y, 0), -1, -1), myConv2(test, der_y, 0), 0);
+
+			dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(myTranspose(test), der_y, 0), 0), 0.5, 0), test, 1);
+			//dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(test, myTranspose(der_y), 0), 0), 0.5, 0), test, 1);
+
+			cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zg.png", dog_oct[x][y], compression_params);
+			int levels = dog_oct[x].size();
+
+		}
+	}
+
+	for (int key_idx = 0; key_idx < keys.size(); key_idx++){
+		keypoint& cur_key = keys[key_idx];
+		int index = cur_key.index;
+		int octave = cur_key.oct;
+		int idx = cur_key.idx;
+		int idy = cur_key.idy;
+
+		if (abs(dog_oct[octave][index].at<float>(idx, idy)) < 7.65){
+			cur_key.filtered = true;
+			continue;
+		}
+
+		float Dxx = dog_oct[octave][index].at<float>(idx - 1, idy) + dog_oct[octave][index].at<float>(idx + 1, idy) - 2 * dog_oct[octave][index].at<float>(idx, idy);
+		float Dyy = dog_oct[octave][index].at<float>(idx, idy - 1) + dog_oct[octave][index].at<float>(idx, idy + 1) - 2 * dog_oct[octave][index].at<float>(idx, idy);
+		float Dxy = dog_oct[octave][index].at<float>(idx - 1, idy - 1) + dog_oct[octave][index].at<float>(idx + 1, idy + 1) - dog_oct[octave][index].at<float>(idx - 1, idy + 1) - dog_oct[octave][index].at<float>(idx + 1, idy - 1);
+		float deter = Dxx * Dyy - Dxy * Dxy;
+		if (deter <= 0){
+			cur_key.filtered = true;
+			continue;
+		}
+		//float R = (Dxx + Dyy) / deter;
+		float R = ((Dxx + Dyy) * (Dxx + Dyy)) / deter;
+		float R_thresh = ((r + 1) * (r + 1)) / r;
+		if (R > R_thresh){
+			cur_key.filtered = true;
+		}
+
+	}
+
+	int fish;
+
+	return;
 }
 
 float mySiftVertParabola(float l_x, float l_y, float p_x, float p_y, float r_x, float r_y){
@@ -940,15 +1166,15 @@ Mat mySift(Mat original){
 	std::string img_name = "audrey";
 	std::string ftype = ".png";
 
-
 	//cv::Mat image = frgb2Gray(original);
 	//image = fdirectResize(image, image.rows * 2, image.cols * 2);
 	cv::Mat image = linearResize(original, original.rows * 2, original.cols * 2);
 	image = frgb2Gray(image);
+	cv::Mat temp_image = image;
 
 	int printoff = 0;	//	Debug, used to print to console the values of all keypoints found by this function
 	int full_dog = 0;	//	Set this to 1 to change the output image to a full representation of the difference-of-gaussians and scale space location of each keypoint
-	int mark_dim = 2;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
+	int mark_dim = 1;	//	Determines size of circles in the output image.  Recommend setting to 10 or higher if full_dog is set to 1
 
 	//	The first step is to scale up the input image by a factor of 2 in both dimensions, then apply a gaussian blur with sigma = 1.6
 	//	Scaling up the input provides more keypoints and approximates a blur with sigma = 1.0, assuming the original image is roughly sigma = 0.5 which is the threshold for noise
@@ -956,15 +1182,14 @@ Mat mySift(Mat original){
 	float sigma = 1.6;
 
 	uchar scales = 3;
-	uchar octaves = 4;
-	int region = REGION_SIZE;
+	uchar octaves = 1;
+	int region = 4;
 	int srcRows = image.rows;
 	int srcCols = image.cols;
 
 	float k = pow(2.0, (1.0 / (float)scales));
 	int s = scales + 3;
-
-	
+	int slevel = s - 1;
 
 	int curRows = srcRows, curCols = srcCols;
 
@@ -979,18 +1204,27 @@ Mat mySift(Mat original){
 	int gauss_exp = 0;
 
 	for (int oct = 0; oct < octaves; oct++){
+		printf("Oct %d\n", oct);
 		get_nvtAttrib("Octave " + to_string(oct), 0xFF888888);
 		std::vector<cv::Mat> blur_img;
 		std::vector<cv::Mat> dog_img;
+		curRows = temp_image.rows;
+		curCols = temp_image.cols;
 
 		//printf("Oct: %d\n", oct);
-		cv::Mat current = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+		//cv::Mat current = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+		cv::Mat current = temp_image;
 		blur_img.push_back(current);
-		gauss_exp += 1;
 
 		get_nvtAttrib("Scale Space", 0xFF000088);
 		for (int step = 1; step < s; step++){
-			cv::Mat next = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+			printf("  Step %d: ", step);
+			float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+			printf(" %f\n", temp_scale);
+
+			current = temp_image;
+			//cv::Mat next = fGaussianFilter(image, pow(k, gauss_exp) * sigma);
+			cv::Mat next = fGaussianFilterSep(temp_image, temp_scale);
 			cv::Mat dog = cv::Mat::zeros(curRows, curCols, CV_32FC1);
 			blur_img.push_back(next);
 
@@ -1000,6 +1234,7 @@ Mat mySift(Mat original){
 
 			cudaMySiftDOG(curr_data, next_data, dog_data, curRows, curCols);
 
+			//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((oct + 1) * 10 + (step)) + "_g.png", dog, compression_params);
 			dog_img.push_back(dog);
 			current = next;
 			gauss_exp++;
@@ -1024,6 +1259,9 @@ Mat mySift(Mat original){
 			}
 
 			char* answers = new char[curRows * curCols];
+			for (int iter = 0; iter < curRows * curCols; iter++){
+				answers[iter] = 0;
+			}
 
 			//call
 			cudaMySiftKeypoints(prev_data, curr_data, next_data, answers, key_str, curRows, curCols, bit_str_size);
@@ -1049,8 +1287,11 @@ Mat mySift(Mat original){
 						int idy = (i * curCols + j) % curCols;
 						keypoint newKey(idx, idy, oct, 0, step);
 						//printf("    New Key, idx: %d, idy: %d, oct: %d, step: %d\n", idx, idy, oct, step);
+						newKey.posy = ((float)i) / curRows;
+						newKey.posx = ((float)j) / curCols;
 						newKey.scale = temp_scale;
 						keys.push_back(newKey);
+						key_count++;
 					}
 				}
 			}
@@ -1061,17 +1302,24 @@ Mat mySift(Mat original){
 		}
 		nvtxRangePop();
 
-		curRows = curRows / 2;
-		curCols = curCols / 2;
-		image = fdirectResize(image, curRows, curCols);
 		cudaDeviceSynchronize();
+		printf("  tRows: %d, tCols: %d\n", temp_image.rows, temp_image.cols);
+		image = current;
+		image = fdirectResize(image, image.rows / 2, image.cols / 2);
+		temp_image = image;
 
+		//src_data = (float*)image.datastart;
+		//printf("Fish3\n");
 		dog_oct.push_back(dog_img);
 		blur_oct.push_back(blur_img);
 		gauss_exp -= 2;
 		nvtxRangePop();
 	}
 	cudaDeviceSynchronize();
+
+	printf("Keys Size: %d\n", key_count);
+
+	//mySiftWriteKeyFile(keys);
 
 	//or_mag
 	std::vector<std::vector<float*>> or_mag_oct;
@@ -1106,14 +1354,18 @@ Mat mySift(Mat original){
 
 	printf("OrMagTest\n");
 	cudaDeviceSynchronize();
-	cudaTest(original.rows, original.cols);
+	//cudaTest(original.rows, original.cols);
 	//frgb2Gray(original);
 	printf("OrMagTest End\n");
 
-	mySiftEdgeResponses(dog_oct, keys);
+	//mySiftEdgeResponses(dog_oct, keys);
+	mySiftEdgeResponsesNew(dog_oct, keys);
 	cudaDeviceSynchronize();
 	//cudaDeviceSynchronize();
 	//cudaDeviceSynchronize();
+	printf("Size before: %d\n", keys.size());
+	mySiftKeyCull(keys);
+	printf("Size after: %d\n", keys.size());
 
 	//cudaTest(original.rows, original.cols);
 
@@ -1133,7 +1385,7 @@ Mat mySift(Mat original){
 		}
 	}*/
 
-	mySiftKeyCull(keys);
+	
 	key_count = keys.size();
 
 	//printf("Unfiltered: %d\n", unfiltered);
@@ -1152,15 +1404,15 @@ Mat mySift(Mat original){
 	mySiftDescriptors(keys, blur_oct, or_mag_oct);
 	printf("Descriptors Done!\n");
 
+	mySiftKeyCull(keys);
 	key_count = keys.size();
-
-	//printf("Unfiltered: %d\n", key_count);
+	printf("Unfiltered: %d\n", key_count);
 	
 
-	mySiftKeyCull(keys);
+	
 	printf("KDTree\n");
 	get_nvtAttrib("KDTree", 0xFF000088);
-	kd_node fish = mySiftKDHelp(keys);
+	//kd_node fish = mySiftKDHelp(keys);
 	//frgb2Gray(original);
 	cudaDeviceSynchronize();
 	nvtxRangePop();
@@ -1177,7 +1429,7 @@ Mat mySift(Mat original){
 	nvtxRangePop();
 	//mySiftWriteKeyFile(keys);
 	//mySiftKeyCull(keys);
-	return original;
+	//return original;
 
 	if (full_dog == 1){
 		int destRows = 4 * original.rows, destCols = (s) * (2 * original.cols);
@@ -1234,7 +1486,39 @@ Mat mySift(Mat original){
 		}
 	}
 	else{
-		output = frgb2Gray(original);
+		output = original;
+		key_index = 0;
+		while (key_index < key_count){
+			keypoint key_now = keys[key_index];
+			if (key_now.filtered){
+				key_index++;
+				continue;
+			}
+
+			int idx = key_now.idy, idy = key_now.idx;
+			int oct = key_now.oct, kindex = (int)key_now.index;
+			//printf(" %d:%d ", oct, kindex);
+
+			float mult = pow(2, oct - 1);
+
+			//cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim, cv::Scalar(0, 0, 255), 2, 8, 0);
+
+			//printf("Angle: %f\n",key_now.angle);
+			//float size = 10 + (5 * mark_dim * ((10 * oct) * (k * (kindex -1))));
+			float size = 10 + (5 * mark_dim * ((10 * oct)));
+			int newi = (idx * mult) + (sin(key_now.angle) * size);
+			int newj = (idy * mult) + (cos(key_now.angle) * size);
+
+			//if (newi >= 0 && newi <= srcRows / 2 - 1 && newj >= 0 && newj <= srcCols / 2 - 1){
+			//cv::arrowedLine(output, cv::Point(idx * mult, idy * mult), cv::Point(newi, newj), cv::Scalar(0, 0, 255), 1, 8, 0);
+
+			cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim * (oct + 1), cv::Scalar(0, 0, 255), 1, 8, 0);
+			//cv::circle(output, cv::Point(idx * mult, idy * mult), mark_dim, cv::Scalar(0, 0, 255), 1, 8, 0);
+			//}
+
+
+			key_index++;
+		}
 	}
 	
 	return output;

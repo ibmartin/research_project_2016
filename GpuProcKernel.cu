@@ -16,6 +16,10 @@
 #define M_PI				3.14159265358979323846  /* pi */
 #define REGION_SIZE			4
 #define gpuErrchk(ans) { gpuAssert((ans), __FILE__, __LINE__); }
+
+//int FIXED = 16;
+//int ONE = 1 << FIXED;
+
 inline void gpuAssert(cudaError_t code, const char *file, int line, bool abort = true)
 {
 	//fprintf(stderr, "Checking\n");
@@ -190,6 +194,56 @@ __global__ void fGaussianFilterKernel(float* dest_data, float* src_data, double*
 	}*/
 }
 
+__global__ void myConv2Kernel(float* deviceTemp, float* deviceLarge, float* deviceSmall, int tRows, int tCols, int lRows, int lCols, int sRows, int sCols, int pix_begin, int lrg_begin){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	float val = 0;
+	int value = 0;
+	int FIXED = 16;
+	int ONE = 1 << FIXED;
+
+	int stRow, sdRow, stCol, sdCol;
+	int mtRow, mdRow, mtCol, mdCol;
+	int ks, km, ls, lm;
+	int k, l, m, n;
+	int loc_m, loc_n, loc_k, loc_l;
+	int loc_t, loc_s;
+
+	int i = (pix_begin + idx) / tCols;
+	int j = (pix_begin + idx) % tCols;
+
+	if (pix_begin + idx > tRows * tCols){
+		return;
+	}
+
+	stRow = i - sRows + 1;
+	sdRow = max(0, stRow);
+	stCol = j - sCols + 1;
+	sdCol = max(0, stCol);
+	mtRow = stRow + sRows;
+	mdRow = min(lRows, stRow + sRows);
+	mtCol = stCol + sCols;
+	mdCol = min(lCols, stCol + sCols);
+	ks = sdRow - stRow; km = sRows - (mtRow - mdRow);
+	ls = sdCol - stCol; lm = sCols - (mtCol - mdCol);
+
+	for (k = ks, m = sdRow; k < km; k++, m++){
+		for (l = ls, n = sdCol; l < lm; l++, n++){
+			//float largeval = large.at<float>(m, n);
+			//float smallval = small.at<float>(k, l);
+			loc_t = (m * lCols + n) - lrg_begin;
+			loc_s = (sRows - k - 1) * sCols + (sCols - l - 1);
+
+			//val += large.at<float>(m, n) * small.at<float>(sRows - k - 1, sCols - l - 1);
+			//val += deviceLarge[loc_t] * deviceSmall[loc_s];
+			value += (deviceLarge[loc_t] * deviceSmall[loc_s]) * ONE;
+		}
+	}
+
+	//deviceTemp[idx] = val;
+	deviceTemp[idx] = value / ONE;
+
+}
+
 __global__ void sobelGradientKernel(short* temp_data, unsigned char* src_data, int* sobel_x, int* sobel_y, double* rangeMin, double* rangeMax, int srcRows, int srcCols, int offset){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -271,38 +325,43 @@ __global__ void kMeansCountingKernel(unsigned char* src_data, unsigned char* k_i
 	atomicAdd((k_count + new_index), 1);
 }
 
-__global__ void kMeansCountingKernelOld(unsigned char* src_data, unsigned char* k_index, int* k_count, float* k_colors, bool* convergence, int k_means, int srcRows, int srcCols){
+__global__ void kMeansCountingKernelFixed(unsigned char* src_data, unsigned char* k_index, int* k_count, int* k_colors, bool* convergence, int k_means, int srcRows, int srcCols){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int FIXED = 16;
+	int ONE = 1 << FIXED;
 
 	int i = (idx) / srcCols;
 	int j = (idx) % srcCols;
+
+	if (i >= srcRows)
+		return;
 
 	float b2 = src_data[3 * (i * srcCols + j)];
 	float g2 = src_data[3 * (i * srcCols + j) + 1];
 	float r2 = src_data[3 * (i * srcCols + j) + 2];
 	float min_dist = FLT_MAX;
-	unsigned char new_index;
+	unsigned char new_index = k_index[i * srcCols + j];
 
 	for (int group = 0; group < k_means; group++){
-		float b1 = k_colors[3 * group];
-		float g1 = k_colors[3 * group + 1];
-		float r1 = k_colors[3 * group + 2];
+		float val = 0;
+		val += (b2 - ((float)k_colors[3 * group + 0] / ONE)) * (b2 - ((float)k_colors[3 * group + 0] / ONE));
+		val += (g2 - ((float)k_colors[3 * group + 1] / ONE)) * (g2 - ((float)k_colors[3 * group + 1] / ONE));
+		val += (r2 - ((float)k_colors[3 * group + 2] / ONE)) * (r2 - ((float)k_colors[3 * group + 2] / ONE));
 
-		float dist = std::sqrt(pow(r2 - r1, 2) + pow(g2 - g1, 2) + pow(b2 - b1, 2));	//Combination of pow and sqrt is too much
-		//float dist = 0;
+		float dist = sqrtf(val);
 		if (dist < min_dist){
 			min_dist = dist;
-			//k_index[i * srcCols + j] = group;
 			new_index = group;
 		}
-
 	}
 	if (k_index[i * srcCols + j] != new_index){
 		k_index[i * srcCols + j] = new_index;
 		//printf("New Index: %d", new_index);
-		*convergence = false;
+		//atomicAdd((hits + new_index), 1);
+		//if (iter > 60)
+		//	printf(" (%d, %d) \n",i,j);
+		convergence[0] = false;
 	}
-	//k_count[new_index] += 1;
 	atomicAdd((k_count + new_index), 1);
 }
 
@@ -322,6 +381,25 @@ __global__ void kMeansGroupAdjustKernel(unsigned char* src_data, unsigned char* 
 	}
 }
 
+__global__ void kMeansGroupAdjustKernelFixed(unsigned char* src_data, unsigned char* k_index, int* k_count, int* k_colors, int k_means, int srcRows, int srcCols){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int FIXED = 16;
+	int ONE = 1 << FIXED;
+
+	int i = (idx) / srcCols;
+	int j = (idx) % srcCols;
+
+	int group = k_index[i * srcCols + j];
+	int group_count = k_count[group];
+	for (int color = 0; color < 3; color++){
+		//float src_val = src_data[3 * (i * srcCols + j) + color];
+		int src_val = src_data[3 * (i * srcCols + j) + color] * ONE;
+		int val = src_val / (group_count);
+		//k_colors[3 * group + color] += val;
+		atomicAdd((k_colors + (3 * group + color)), val);
+	}
+}
+
 __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_index, float* k_colors, int srcRows, int srcCols){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -331,6 +409,20 @@ __global__ void kMeansOutputKernel(unsigned char* dest_data, unsigned char* k_in
 	int group = k_index[i * srcCols + j];
 	for (int color = 0; color < 3; color++){
 		dest_data[3 * (i * srcCols + j) + color] = (unsigned char)k_colors[3 * group + color];
+	}
+}
+
+__global__ void kMeansOutputKernelFixed(unsigned char* dest_data, unsigned char* k_index, int* k_colors, int srcRows, int srcCols){
+	int idx = blockIdx.x * blockDim.x + threadIdx.x;
+	int FIXED = 16;
+	int ONE = 1 << FIXED;
+
+	int i = (idx) / srcCols;
+	int j = (idx) % srcCols;
+
+	int group = k_index[i * srcCols + j];
+	for (int color = 0; color < 3; color++){
+		dest_data[3 * (i * srcCols + j) + color] = (unsigned char)(k_colors[3 * group + color] / ONE);
 	}
 }
 

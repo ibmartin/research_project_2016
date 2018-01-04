@@ -18,6 +18,9 @@
 
 #define CUDA_CALL(x) {cudaError_t cuda_error__ = (x); if (cuda_error__) printf("CUDA error: " #x " returned \"%s\"\n", cudaGetErrorString(cuda_error__));}
 
+int FIXED = 16;
+int ONE = 1 << FIXED;
+
 void cudaLagSetup(){
 	get_nvtAttrib("Cuda Setup", 0xFFFFFFFF);
 	unsigned char* nothing;
@@ -482,6 +485,103 @@ void cudafGaussianFilter(float* input, float* output, double* gKernel, int srcRo
 
 }
 
+void cudaMyConv2(float* temp, float* large, float* small, int tRows, int tCols, int lRows, int lCols, int sRows, int sCols){
+	float* deviceTemp;
+	float* deviceLarge;
+	float* deviceSmall;
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int blocks = 0;
+	int chunkRows = 0;
+	int datasize = sizeof(float);
+
+	int i1, j1, i2, j2;
+	int stRow, sdRow, stCol, sdCol;
+	int mtRow, mdRow, mtCol, mdCol;
+	int ks, km, ls, lm;
+	int k, l, m, n;
+
+	int remainder = tRows * tCols;
+	int pixels = MEM_CAP / (2.1 * datasize) ;
+
+	cudaMalloc(&deviceSmall, (sRows * sCols) * datasize);
+	cudaMemcpy(deviceSmall, small, (sRows * sCols) * datasize, cudaMemcpyHostToDevice);
+
+	int rounds = 0;
+
+	while (true){
+		if (remainder <= 0){
+			break;
+		}
+		//printf("Remainder: %d, Pixels: %d\n", remainder, pixels);
+		int pix_begin = (tRows * tCols) - remainder;
+		int pix_end = min(tRows * tCols - 1, pix_begin + pixels - 1);
+		i1 = pix_begin / tCols;
+		j1 = pix_begin % tCols;
+		i2 = pix_end / tCols;
+		j2 = pix_end % tCols;
+
+		stRow = i1 - sRows + 1;
+		sdRow = max(0, stRow);
+		stCol = j1 - sCols + 1;
+		sdCol = max(0, stCol);
+		mtRow = stRow + sRows;
+		mdRow = min(lRows, stRow + sRows);
+		mtCol = stCol + sCols;
+		mdCol = min(lCols, stCol + sCols);
+		ks = sdRow - stRow; km = sRows - (mtRow - mdRow);
+		ls = sdCol - stCol; lm = sCols - (mtCol - mdCol);
+		int m_begin = sdRow;
+		int n_begin = sdCol;
+		int lrg_begin = m_begin * lCols + n_begin;
+
+		stRow = i2 - sRows + 1;
+		sdRow = max(0, stRow);
+		stCol = j2 - sCols + 1;
+		sdCol = max(0, stCol);
+		mtRow = stRow + sRows;
+		mdRow = min(lRows, stRow + sRows);
+		mtCol = stCol + sCols;
+		mdCol = min(lCols, stCol + sCols);
+		ks = sdRow - stRow; km = sRows - (mtRow - mdRow);
+		ls = sdCol - stCol; lm = sCols - (mtCol - mdCol);
+		int m_end = sdRow + (km - ks - 1);
+		int n_end = sdCol + (lm - ls - 1);
+		int lrg_end = m_end * lCols + n_end;
+
+		int tmpN = (pix_end - pix_begin + 1) * datasize;
+		int lrgN = (lrg_end - lrg_begin + 1) * datasize;
+
+		cudaMalloc(&deviceTemp, tmpN);
+		cudaMalloc(&deviceLarge, lrgN);
+
+		blocks = (tmpN / datasize + threadsPerBlock - 1) / threadsPerBlock;
+		if (blocks == 0) { blocks = 1; }
+
+		/*if (lrg_begin > 300000){
+			cudaFree(deviceTemp);
+			cudaFree(deviceLarge);
+			break;
+		}*/
+
+		//printf("    tmp_begin: %d, tmp_end: %d, tmp_limit: %d, tmpN: %d\n", pix_begin, pix_end, tRows * tCols, tmpN);
+		//printf("    lrg_begin: %d, lrg_end: %d, lrg_limit: %d, lrgN: %d\n", lrg_begin, lrg_end, lRows * lCols, lrgN);
+		cudaMemcpy(deviceLarge, large + lrg_begin, lrgN, cudaMemcpyHostToDevice);
+		myConv2Kernel << <blocks, threadsPerBlock >> > (deviceTemp, deviceLarge, deviceSmall, tRows, tCols, lRows, lCols, sRows, sCols, pix_begin, lrg_begin);
+		
+
+		cudaMemcpy(temp + pix_begin, deviceTemp, tmpN, cudaMemcpyDeviceToHost);
+		//temp[pix_begin] = 255;
+		//temp[pix_end] = 255;
+		remainder -= pixels;
+
+		cudaDeviceSynchronize();
+		cudaFree(deviceTemp);
+		cudaFree(deviceLarge);
+	}
+
+	cudaFree(deviceSmall);
+}
+
 void cudaSobelFilter(unsigned char* input, unsigned char* output, int srcRows, int srcCols){
 	get_nvtAttrib("Setup Inner", 0xFF000088);
 	unsigned char* deviceSrcData;
@@ -811,97 +911,176 @@ void cudaKMeans(unsigned char* input, unsigned char* output, int srcRows, int sr
 
 }
 
-void cudaKMeansOld(unsigned char* input, unsigned char* output, int srcRows, int srcCols, int k_means){
-	int threadsPerBlock = 512;
-	int blocks = ((srcRows * srcCols) + threadsPerBlock - 1) / threadsPerBlock;
+void cudaKMeansFixed(unsigned char* input, unsigned char* output, int srcRows, int srcCols, int k_means){
+	int threadsPerBlock = THREADS_PER_BLOCK;
+	int blocks = 0;
+	int chunkRows = 0;
+	int offset = 0;
+
 	unsigned char* deviceSrcData;
 	unsigned char* deviceDestData;
-	float* device_k_colors;
+	int* device_k_colors;
 	int* device_k_count;
+	//int* device_hits;
 	unsigned char* device_k_index;
 	bool* device_convergence;
-	//int srcN = 3 * srcRows * srcCols;
-	int srcN = fmin(3 * 1920 * 1080, 3 * srcRows * srcCols);
-	cudaMalloc(&deviceSrcData, srcN*sizeof(unsigned char));
-	cudaMalloc(&deviceDestData, srcN*sizeof(unsigned char));
-	cudaMalloc(&device_k_colors, (3 * k_means)*sizeof(float));
-	cudaMalloc(&device_k_index, (srcRows * srcCols)*sizeof(unsigned char));
-	cudaMalloc(&device_k_count, (k_means)*sizeof(int));
-	cudaMalloc(&device_convergence, sizeof(bool));
 
-	cudaMemcpy(deviceSrcData, input, srcN*sizeof(unsigned char), cudaMemcpyHostToDevice);
-
-	float* k_colors = new float[3 * k_means];
+	//float* k_colors = new float[k_means * 3];
+	int* k_colors = new int[k_means * 3];
 	unsigned char* k_index = new unsigned char[srcRows * srcCols];
 	int* k_count = new int[k_means];
+	//* hits = new int[k_means];
+
+	int srcN = srcRows * srcCols * 3;
 
 	for (int pix = 0; pix < k_means; pix++){
 		int i = rand() % srcRows;
 		int j = rand() % srcCols;
 		for (int color = 0; color < 3; color++){
-			k_colors[3 * pix + color] = input[3 * (i * srcCols + j) + color];
+			k_colors[3 * pix + color] = input[3 * (i * srcCols + j) + color] * ONE;
 		}
-
 	}
-	cudaMemcpy(device_k_colors, k_colors, 3 * k_means *sizeof(float), cudaMemcpyHostToDevice);
+	cudaMalloc(&device_k_colors, (3 * k_means)*sizeof(int));
+	cudaMemcpy(device_k_colors, k_colors, 3 * k_means *sizeof(int), cudaMemcpyHostToDevice);
 
-	printf("=== START ===\n");
-	for (int group = 0; group < k_means; group++){
-		printf("Color Group %d: R=%f, G=%f, B=%f \n", group + 1, k_colors[3 * group + 2], k_colors[3 * group + 1], k_colors[3 * group]);
-	}
+	//printf("=== START ===\n");
+	//for (int group = 0; group < k_means; group++){
+	//printf("Color Group %d: R=%f, G=%f, B=%f \n", group + 1, k_colors[3 * group + 2], k_colors[3 * group + 1], k_colors[3 * group]);
+	//}
 
 	bool convergence[1] = { false };
 
 	for (int k = 0; k < srcRows * srcCols; k++){
 		k_index[k] = 0;
 	}
-	cudaMemcpy(device_k_index, k_index, srcRows * srcCols *sizeof(unsigned char), cudaMemcpyHostToDevice);
+
+	chunkRows = (IMG_CHUNK * 0.5) / srcCols;
+	if (chunkRows == 0){
+		chunkRows = srcRows;
+	}
+
+	cudaMalloc(&device_k_count, (k_means)*sizeof(int));
+	//cudaMalloc(&device_hits, (k_means)*sizeof(int));
+	//cudaMalloc(&device_k_colors, (3 * k_means)*sizeof(float));
+	cudaMalloc(&device_convergence, sizeof(bool));
+
+	//cudaMalloc(&device_k_index, (srcRows * srcCols)*sizeof(uchar));
+	//cudaMemcpy(device_k_index, k_index, srcRows * srcCols *sizeof(uchar), cudaMemcpyHostToDevice);
 	int count = 0;
 
 	while (!convergence[0]){
-		convergence[0] = true;
+		//convergence[0] = true; //UNDO
 		cudaMemcpy(device_convergence, convergence, sizeof(bool), cudaMemcpyHostToDevice);
 		for (int k = 0; k < k_means; k++){
 			k_count[k] = 0;
+			//hits[k] = 0;
 		}
 		cudaMemcpy(device_k_count, k_count, k_means * sizeof(int), cudaMemcpyHostToDevice);
+		//cudaMemcpy(device_hits, hits, k_means * sizeof(int), cudaMemcpyHostToDevice);
+		//printf("Count: %d\n",count);
 
-		kMeansCountingKernelOld << <blocks, threadsPerBlock >> > (deviceSrcData, device_k_index, device_k_count, device_k_colors, device_convergence, k_means, srcRows, srcCols);
-		cudaMemcpy(k_index, device_k_index, (srcRows*srcCols)*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+		int rounds = ceil(srcRows / (float)chunkRows);
+
+		offset = 0;
+		for (int step = 0; step < rounds; step++){
+			int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
+			if (destN <= 0){
+				break;
+			}
+			blocks = ((destN / 3) + threadsPerBlock - 1) / threadsPerBlock;
+
+			cudaMalloc(&deviceSrcData, destN*sizeof(unsigned char));
+			cudaMemcpy(deviceSrcData, input + offset, destN*sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMalloc(&device_k_index, destN*sizeof(unsigned char) / 3);
+			cudaMemcpy(device_k_index, k_index + (offset / 3), destN*sizeof(unsigned char) / 3, cudaMemcpyHostToDevice);
+
+			//kernel
+			//kMeansCountingKernel << <blocks, threadsPerBlock >> > (deviceSrcData, device_k_index, device_k_count, device_hits, device_k_colors, device_convergence, k_means, srcRows, srcCols,count);
+			kMeansCountingKernelFixed << <blocks, threadsPerBlock >> > (deviceSrcData, device_k_index, device_k_count, device_k_colors, device_convergence, k_means, srcRows, srcCols);
+
+			cudaMemcpy(k_index + (offset / 3), device_k_index, destN*sizeof(unsigned char) / 3, cudaMemcpyDeviceToHost);
+
+			cudaFree(deviceSrcData);
+			cudaFree(device_k_index);
+			offset += destN;
+		}
 		cudaMemcpy(k_count, device_k_count, (k_means)*sizeof(int), cudaMemcpyDeviceToHost);
+		//cudaMemcpy(hits, device_hits, (k_means)*sizeof(int), cudaMemcpyDeviceToHost);
 		cudaMemcpy(convergence, device_convergence, sizeof(bool), cudaMemcpyDeviceToHost);
 
-		if (count == 400){
-			printf("Stopped at 400!\n");
+		//printf("Group Count, step %d::\n",count);
+		//for (int i = 0; i < k_means; i++){
+		//	printf("Group %d: %d\n",i,k_count[i]);
+		//}
+
+		//convergence[0] = true;	//Stopper
+
+		//if (convergence[0])		//RE-ENABLE WHEN ACTUALLY USING
+		//break;
+
+		if (count == 200){
+			//printf("Stopped at %d!\n",count);
 			break;
 		}
 		count++;
-		//printf("Bogey::\n");
-		if (convergence[0])
-			break;
+
 		for (int k = 0; k < 3 * k_means; k++){
 			k_colors[k] = 0;
 		}
-		cudaMemcpy(device_k_colors, k_colors, 3 * k_means *sizeof(float), cudaMemcpyHostToDevice);
+		cudaMemcpy(device_k_colors, k_colors, 3 * k_means *sizeof(int), cudaMemcpyHostToDevice);
 
-		//kMeansGroupAdjustKernel<<<blocks,threadsPerBlock>>> (deviceSrcData,device_k_index,device_k_count,device_k_colors,k_means,srcRows,srcCols);
-		cudaMemcpy(k_colors, device_k_colors, 3 * k_means * sizeof(float), cudaMemcpyDeviceToHost);
+		rounds = ceil(srcRows / (float)chunkRows);
 
+		offset = 0;
+		for (int step = 0; step < rounds; step++){
+			int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
+			if (destN <= 0){
+				break;
+			}
+			blocks = ((destN / 3) + threadsPerBlock - 1) / threadsPerBlock;
+
+			cudaMalloc(&deviceSrcData, destN*sizeof(unsigned char));
+			cudaMemcpy(deviceSrcData, input + offset, destN*sizeof(unsigned char), cudaMemcpyHostToDevice);
+			cudaMalloc(&device_k_index, destN*sizeof(unsigned char) / 3);
+			cudaMemcpy(device_k_index, k_index + (offset / 3), destN*sizeof(unsigned char) / 3, cudaMemcpyHostToDevice);
+
+			kMeansGroupAdjustKernelFixed << <blocks, threadsPerBlock >> > (deviceSrcData, device_k_index, device_k_count, device_k_colors, k_means, srcRows, srcCols);
+
+			cudaFree(deviceSrcData);
+			cudaFree(device_k_index);
+
+			offset += destN;
+		}
+		cudaMemcpy(k_colors, device_k_colors, 3 * k_means * sizeof(int), cudaMemcpyDeviceToHost);
+		//kernel
 	}
-	cudaMemcpy(device_k_colors, k_colors, 3 * k_means *sizeof(float), cudaMemcpyHostToDevice);
 
+	int rounds = ceil(srcRows / (float)chunkRows);
+	offset = 0;
+	for (int step = 0; step < rounds; step++){
+		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - offset);
+		if (destN <= 0){
+			break;
+		}
+		blocks = ((destN / 3) + threadsPerBlock - 1) / threadsPerBlock;
 
-	printf("=== END ===\n");
-	//for (int group = 0; group < k_means; group++){
-	//printf("Color Group %d: R=%f, G=%f, B=%f \n", group + 1, k_colors[3 * group + 2], k_colors[3 * group + 1], k_colors[3 * group]);
-	//}
-	kMeansOutputKernel << <blocks, threadsPerBlock >> > (deviceDestData, device_k_index, device_k_colors, srcRows, srcCols);
-	cudaMemcpy(output, deviceDestData, srcN*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+		cudaMalloc(&deviceDestData, destN*sizeof(unsigned char));
+		cudaMalloc(&device_k_index, destN*sizeof(unsigned char) / 3);
+		cudaMemcpy(device_k_index, k_index + (offset / 3), destN*sizeof(unsigned char) / 3, cudaMemcpyHostToDevice);
 
-	cudaFree(deviceSrcData);
-	cudaFree(deviceDestData);
+		//kernel
+		kMeansOutputKernelFixed << <blocks, threadsPerBlock >> > (deviceDestData, device_k_index, device_k_colors, srcRows, srcCols);
+		cudaMemcpy(output + offset, deviceDestData, destN*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+
+		cudaFree(deviceDestData);
+		cudaFree(device_k_index);
+
+		offset += destN;
+	}
+
+	//printf("Count: %d\n", count);
+
 	cudaFree(device_k_colors);
-	cudaFree(device_k_index);
 	cudaFree(device_k_count);
 	cudaFree(device_convergence);
 
