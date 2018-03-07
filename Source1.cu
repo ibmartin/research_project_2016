@@ -1104,7 +1104,7 @@ int main(void){		// [MAIN]
 
 
 	cv::Mat im, im0, im1;
-	im = imread("D://School//Summer 2016//Research//audrey.jpg");
+	im = imread("D://School//Summer 2016//Research//nausicaa.jpg");
 	im = img_proc::linearResize(im, 640, 640);
 	//im = img_proc::frgb2Gray(im);
 	//im = imread("D://School//Summer 2016//Research//Stereo//storage//z_im0.png");
@@ -1139,7 +1139,7 @@ int main(void){		// [MAIN]
 	//im = img_proc::fGaussianFilterSep(im, 1.6);
 	//im = img_proc::mySift(im);
 	//im = fGaussianFilterSep(im, 1.6);
-	im = img_proc::mySift(im);
+	//im = reverse(im);
 	//im = img_proc::mySift(im);
 	//im = myConv2(im, filter, 0);
 	//im1 = kMeansFixed(im, 4);
@@ -1152,7 +1152,7 @@ int main(void){		// [MAIN]
 	//im = img_proc::diff_count(im0, im1);
 	
 
-	imwrite("D://School//Summer 2016//Research//mySift//audrey_test_cpu.png", im, compression_params);
+	//imwrite("D://School//Summer 2016//Research//mySift//reverse.png", im, compression_params);
 	//imwrite("D://School//Summer 2016//Research//Stereo//storage//z_im1.png", im, compression_params);
 
 	//im0 = img_proc::frgb2Gray(im0);
@@ -1278,9 +1278,9 @@ int main(void){		// [MAIN]
 
 	//********//
 
-	printf("Done!\n");
-	getchar();
-	return 0;
+	//printf("Done!\n");
+	//getchar();
+	//return 0;
 
 	//********//
 

@@ -673,7 +673,7 @@ void mySiftEdgeResponsesNew(std::vector<std::vector<cv::Mat>>& dog_oct, std::vec
 	for (int x = 0; x < dog_oct.size(); x++){
 		printf("  Oct %d\n", x);
 		for (int y = 0; y < dog_oct[x].size(); y++){
-			printf("    Level %d\n", y);
+			//printf("    Level %d\n", y);
 
 			cv::Mat test = dog_oct[x][y];
 			//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_g.png", dog_oct[x][y], compression_params);
@@ -683,7 +683,7 @@ void mySiftEdgeResponsesNew(std::vector<std::vector<cv::Mat>>& dog_oct, std::vec
 			dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(myTranspose(test), der_y, 0), 0), 0.5, 0), test, 1);
 			//dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(test, myTranspose(der_y), 0), 0), 0.5, 0), test, 1);
 
-			cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zg.png", dog_oct[x][y], compression_params);
+			//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zg.png", dog_oct[x][y], compression_params);
 			int levels = dog_oct[x].size();
 
 		}
@@ -1182,7 +1182,7 @@ Mat mySift(Mat original){
 	float sigma = 1.6;
 
 	uchar scales = 3;
-	uchar octaves = 1;
+	uchar octaves = 3;
 	int region = 4;
 	int srcRows = image.rows;
 	int srcCols = image.cols;
@@ -1219,7 +1219,8 @@ Mat mySift(Mat original){
 		get_nvtAttrib("Scale Space", 0xFF000088);
 		for (int step = 1; step < s; step++){
 			printf("  Step %d: ", step);
-			float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+			//float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+			float temp_scale = sigma * pow(pow(2.0, (1.0 / slevel)), oct * slevel + step);
 			printf(" %f\n", temp_scale);
 
 			current = temp_image;
@@ -1236,7 +1237,7 @@ Mat mySift(Mat original){
 
 			//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((oct + 1) * 10 + (step)) + "_g.png", dog, compression_params);
 			dog_img.push_back(dog);
-			current = next;
+			//current = next;
 			gauss_exp++;
 		}
 		nvtxRangePop();

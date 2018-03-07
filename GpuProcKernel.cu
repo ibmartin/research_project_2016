@@ -53,8 +53,10 @@ __global__ void frgb2GrayKernel(float* dest_data, unsigned char* src_data, int r
 __global__ void reverseKernel(unsigned char* dest_data, unsigned char* src_data, int srcN, int chunkRows, int offset){
 	int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (idx + (offset * 3) < srcN){
-		dest_data[idx] = 255 - src_data[idx + (offset * 3)];
+	if (3 * idx + (offset * 3) < srcN){
+		dest_data[3 * idx + 0] = 255 - src_data[3 * idx + (offset * 3) + 0];
+		dest_data[3 * idx + 1] = 255 - src_data[3 * idx + (offset * 3) + 1];
+		dest_data[3 * idx + 2] = 255 - src_data[3 * idx + (offset * 3) + 2];
 	}
 }
 

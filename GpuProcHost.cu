@@ -150,7 +150,7 @@ void cudaReverse(unsigned char* input, unsigned char* output, int srcRows, int s
 	//printf("Rounds: %d \n", rounds);
 
 	for (int step = 0; step < rounds; step++){
-		int destN = fmin(3 * chunkRows * srcCols, 3 * srcRows * srcCols - (offset * 3));
+		int destN = fmin(chunkRows * srcCols, srcRows * srcCols - (offset));
 		if (destN <= 0){
 			//printf("Broken!\n");
 			break;
@@ -158,13 +158,13 @@ void cudaReverse(unsigned char* input, unsigned char* output, int srcRows, int s
 
 		blocks = (destN + threadsPerBlock - 1) / threadsPerBlock;
 
-		cudaMalloc(&deviceDestData, destN*sizeof(unsigned char));
+		cudaMalloc(&deviceDestData, destN * 3 * sizeof(unsigned char));
 
 		reverseKernel <<<blocks, threadsPerBlock >>>(deviceDestData, deviceSrcData, srcN, chunkRows, offset);
-		cudaMemcpy(output + (3 * offset), deviceDestData, destN*sizeof(unsigned char), cudaMemcpyDeviceToHost);
+		cudaMemcpy(output + (3 * offset), deviceDestData, destN * 3 * sizeof(unsigned char), cudaMemcpyDeviceToHost);
 		cudaFree(deviceDestData);
 
-		offset += destN / 3;
+		offset += destN;
 	}
 
 

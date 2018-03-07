@@ -1367,7 +1367,7 @@ namespace img_proc{
 		//image = gaussianFilter(image, sigma);
 
 		uchar scales = 3;	//	Lowe found 3 to be best
-		uchar octaves = 1;	//	4 or 5 octaves is the standard
+		uchar octaves = 3;	//	4 or 5 octaves is the standard
 		int region = 4;
 		int srcRows = image.rows;
 		int srcCols = image.cols;
@@ -1430,7 +1430,8 @@ namespace img_proc{
 			get_nvtAttrib("Scale Space", 0xFF000088);
 			for (int step = 1; step < s; step++){
 				printf("  Step %d: ", step);
-				float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+				//float temp_scale = sigma * pow(pow(sqrt(2.0), (1.0 / slevel)), oct * slevel + step);
+				float temp_scale = sigma * pow(pow(2.0, (1.0 / slevel)), oct * slevel + step);
 				printf(" %f\n", temp_scale);
 				//	Applies blur of strength k to previous image, until sigma is double that of the first image in octave
 				current = temp_image;
@@ -1997,7 +1998,7 @@ namespace img_proc{
 				dog_oct[x][y] = myElemMat(myElemScalar(myElemMat(temp, myConv2(myTranspose(test), der_y, 0), 0), 0.5, 0), test, 1);
 				//dog_oct[x][y] = myElemMat( myElemScalar( myElemMat(temp, myConv2(test, myTranspose(der_y), 0), 0), 0.5, 0), test, 1);
 				
-				cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zc.png", dog_oct[x][y], compression_params);
+				//cv::imwrite("D://School//Summer 2016//Research//mySift//parrot_test_" + std::to_string((x + 1) * 10 + (y)) + "_zc.png", dog_oct[x][y], compression_params);
 				int levels = dog_oct[x].size();
 
 			}
